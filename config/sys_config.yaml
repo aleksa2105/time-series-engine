@@ -1,0 +1,41 @@
+memtable:
+    storage: skip-list
+    num_of_instances: 2
+    max_items: 4
+    b_tree_order: 8
+block_manager:
+    block_size: 100
+    filename_length: 4
+    split_factor: 34
+sstable:
+    format: separate-files
+    summary_factor: 5
+    compression: false
+    merkle_hash_bytes: 100
+    dir_path: ./internal/disk/sstable/data
+wal:
+    segment_size_in_blocks: 2
+    logs_dir_path: ./internal/disk/write-ahead-log/logs
+    unstaged_offset: 0
+cache:
+    max_items: 1000
+buffer_pool:
+    max_blocks: 100
+lsm:
+    max_levels: 2
+    compaction_algorithm: size-tiered
+    leveled:
+        level0_size: 2
+        level_multiplier: 2
+    size-tiered:
+        size_threshold: 2
+token_bucket:
+    user: bojana
+    capacity: 100
+    interval: 1s
+reserved_prefixes:
+    bloom_filter: bf_
+    count_min_sketch: cms_
+    hyper_log_log: hll_
+    simhash: sh_
+    token_bucket: usertb_
