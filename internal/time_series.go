@@ -29,3 +29,13 @@ func (ts *TimeSeries) Hash() string {
 
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
+
+func (ts *TimeSeries) Size() uint64 {
+	size := uint64(len(ts.MeasurementName))
+	for _, tag := range ts.Tags {
+		size += uint64(len(tag.Name))
+		size += uint64(len(tag.Value))
+	}
+
+	return size
+}
