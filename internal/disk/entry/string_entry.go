@@ -1,4 +1,4 @@
-package page
+package entry
 
 import (
 	"encoding/binary"
@@ -35,7 +35,7 @@ func (e *StringEntry) Serialize() []byte {
 	return allBytes
 }
 
-func Deserialize(bytes []byte) (*StringEntry, uint64, error) {
+func DeserializeStringEntry(bytes []byte) (*StringEntry, uint64, error) {
 	var bytesRead uint64 = 0
 
 	value, n := binary.Uvarint(bytes)

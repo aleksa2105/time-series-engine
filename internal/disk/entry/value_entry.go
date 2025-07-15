@@ -1,4 +1,4 @@
-package page
+package entry
 
 import (
 	"encoding/binary"
@@ -21,4 +21,8 @@ func DeserializeValueEntry(b []byte) *ValueEntry {
 	ve := &ValueEntry{}
 	ve.Value = math.Float64frombits(bits)
 	return ve
+}
+
+func (ve *ValueEntry) Size() uint64 {
+	return uint64(len(ve.Serialize()))
 }

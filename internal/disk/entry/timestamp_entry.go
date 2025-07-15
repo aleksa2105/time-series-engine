@@ -1,4 +1,4 @@
-package page
+package entry
 
 import (
 	"encoding/binary"
@@ -18,6 +18,10 @@ func DeserializeTimestampEntry(b []byte) *TimestampEntry {
 	return &TimestampEntry{
 		Value: binary.BigEndian.Uint64(b),
 	}
+}
+
+func (tse *TimestampEntry) Size() uint64 {
+	return uint64(len(tse.Serialize()))
 }
 
 func (tse *TimestampEntry) Delta(other *TimestampEntry) uint64 {
