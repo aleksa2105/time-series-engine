@@ -46,28 +46,3 @@ func (sc *StringChunk) Add(pm *page.Manager, value string) {
 
 	sc.ActivePage.AddEntry(newEntry)
 }
-
-func (sc *StringChunk) AddNullEntry(pm *page.Manager) {
-	if len(sc.ActivePage.Entries) > 0 {
-		previousEntry := sc.ActivePage.Entries[len(sc.ActivePage.Entries)-1]
-		if previousEntry.Value == 0 {
-			previousEntry.NumRepetitions++
-			sc.ActivePage.Metadata.Count++
-			return
-		}
-	}
-
-	newEntry := entry.NewStringEntry(0)
-	if newEntry.Size() > sc.ActivePage.Padding {
-		pm.Write(sc.ActivePage)
-		sc.ActivePage = page.NewStringPage(pm.Config.PageSize)
-	}
-
-	sc.ActivePage.AddEntry(newEntry)
-}
-
-func (sc *StringChunk) AddNullEntries(numRepetitions uint64) {
-	e := entry.NewStringEntry(0)
-	e.NumRepetitions = numRepetitions
-	sc.ActivePage.AddEntry(e)
-}

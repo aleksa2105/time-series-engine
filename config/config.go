@@ -22,10 +22,16 @@ type PageConfig struct {
 	PageSize uint64 `yaml:"max_size"`
 }
 
+type ParquetConfig struct {
+	PageSize     uint64 `yaml:"max_size"`
+	RowGroupSize uint64 `yaml:"row_group_size"`
+}
+
 type Config struct {
 	MemTableConfig `yaml:"memtable"`
 	PageConfig     `yaml:"page"`
 	TBConfig       `yaml:"token_bucket"`
+	ParquetConfig  `yaml:"parquet"`
 }
 
 func LoadConfiguration() Config {
@@ -95,7 +101,7 @@ func (c *Config) setDefaults() {
 		fmt.Printf("Invalid Memtable max_size value. Set to default: %d\n", mc.MaxSize)
 	}
 
-	// TODO dodaj za page provjeru
+	// TODO dodaj za page i parquet provjeru
 
 	// Token Bucket
 	tb := &c.TBConfig

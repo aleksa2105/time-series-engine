@@ -7,3 +7,5 @@ token_bucket:
     user: bojana
     capacity: 100
     interval: 1s
+parquet:
+    row_group_size: 5
