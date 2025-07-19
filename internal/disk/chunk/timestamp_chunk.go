@@ -15,21 +15,13 @@ func NewTimestampChunk(pageSize uint64) *TimestampChunk {
 	}
 }
 
-func (sc *TimestampChunk) Add(
-	pm *page.Manager, timestamp uint64) {
+func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) {
+	tse := entry.NewTimestampEntry(timestamp)
 
-	tse := &entry.TimestampEntry{
-		Value: timestamp,
+	if tse.Size() > tsc.ActivePage.Padding {
+		pm.Write(tsc.ActivePage)
+		tsc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
 	}
 
-	if len(sc.ActivePage.Entries) != 0 {
-		tse.Value -= sc.ActivePage.Entries[len(sc.ActivePage.Entries)-1].Value
-	}
-
-	if tse.Size() > sc.ActivePage.Padding {
-		pm.Write(sc.ActivePage)
-		sc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
-	}
-
-	sc.ActivePage.AddEntry(tse)
+	tsc.ActivePage.AddEntry(tse)
 }
