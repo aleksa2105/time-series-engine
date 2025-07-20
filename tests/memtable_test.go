@@ -2,76 +2,128 @@ package tests
 
 import (
 	"testing"
-	"time-series-engine/config"
+	"time"
 	"time-series-engine/internal"
 	"time-series-engine/internal/memory"
 )
 
-func TestNewMemTable(t *testing.T) {
-	mt := memory.NewMemTable()
+func createTestPoint(ts string, value float64) *internal.Point {
+	tags := internal.Tags{
+		*internal.NewTag("host", "server1"),
+	}
+	timeSeries := internal.NewTimeSeries(ts, tags)
+	point := internal.NewPoint(value, timeSeries)
+	return &point
+}
 
-	if mt == nil {
-		t.Fatal("expected non-nil MemTable")
+func TestWritePointWithFlush(t *testing.T) {
+	mem := memory.NewMemTable(2)
+
+	p1 := createTestPoint("cpu", 1.0)
+	p2 := createTestPoint("cpu", 2.0)
+	p3 := createTestPoint("cpu", 3.0)
+
+	flush1 := mem.WritePointWithFlush(p1)
+	if len(flush1) != 0 {
+		t.Errorf("Expected no flush on first insert, got %d points", len(flush1))
 	}
 
-	if len(mt.Points) != 0 {
-		t.Errorf("expected empty Points slice, got %d elements", len(mt.Points))
+	flush2 := mem.WritePointWithFlush(p2)
+	if len(flush2) != 0 {
+		t.Errorf("Expected no flush on second insert, got %d points", len(flush2))
 	}
 
-	if mt.Size != 0 {
-		t.Errorf("expected size 0, got %d", mt.Size)
+	flush3 := mem.WritePointWithFlush(p3)
+	if len(flush3) != 2 {
+		t.Errorf("Expected flush of 2 points on third insert, got %d", len(flush3))
 	}
 }
 
-func TestMemTablePutAndIsFull(t *testing.T) {
-	mt := memory.NewMemTable()
+func TestGetSortedPoints(t *testing.T) {
+	mem := memory.NewMemTable(5)
 
-	ts := internal.NewTimeSeries("cpu", internal.Tags{
-		{Name: "env", Value: "prod"},
-	})
+	p1 := createTestPoint("cpu", 1.0)
+	p2 := createTestPoint("cpu", 2.0)
+	mem.WritePointWithFlush(p1)
+	mem.WritePointWithFlush(p2)
 
-	point := internal.NewPoint(1.23, ts)
-	mt.Put(&point)
-
-	if len(mt.Points) != 1 {
-		t.Errorf("expected 1 point, got %d", len(mt.Points))
+	points, err := mem.GetSortedPoints(p1.TimeSeries)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if mt.TimeSeries[ts.Hash()] == nil {
-		t.Errorf("expected timeseries to exist in TimeSeries map")
+	if len(points) != 2 {
+		t.Errorf("Expected 2 points, got %d", len(points))
 	}
-
-	// check Size includes time series size + 16 bytes for point
-	expectedSize := ts.Size() + 16
-	if mt.Size != expectedSize {
-		t.Errorf("expected memtable size %d, got %d", expectedSize, mt.Size)
-	}
-
-	conf := &config.MemTableConfig{MaxSize: expectedSize}
-	if !mt.IsFull(conf) {
-		t.Errorf("expected MemTable to be full")
+	if points[0].Value != 1.0 || points[1].Value != 2.0 {
+		t.Error("Points are not sorted or values incorrect")
 	}
 }
 
-func TestMemTableMinMaxTimestamp(t *testing.T) {
-	mt := memory.NewMemTable()
+func TestDeleteRange(t *testing.T) {
+	mem := memory.NewMemTable(5)
 
-	ts := internal.NewTimeSeries("cpu", internal.Tags{})
+	p1 := createTestPoint("cpu", 1.0)
+	time.Sleep(1 * time.Second)
+	p2 := createTestPoint("cpu", 2.0)
+	time.Sleep(1 * time.Second)
+	p3 := createTestPoint("cpu", 3.0)
 
-	p1 := internal.NewPoint(10.0, ts)
-	p1.Timestamp = 100
+	mem.WritePointWithFlush(p1)
+	mem.WritePointWithFlush(p2)
+	mem.WritePointWithFlush(p3)
 
-	p2 := internal.NewPoint(20.0, ts)
-	p2.Timestamp = 200
+	mem.DeleteRange(p1.TimeSeries, p2.Timestamp, p3.Timestamp)
 
-	mt.Put(&p1)
-	mt.Put(&p2)
+	points, _ := mem.GetSortedPoints(p1.TimeSeries)
+	if len(points) != 1 {
+		t.Errorf("Expected 1 point after delete, got %d", len(points))
+	}
+	if points[0].Value != 1.0 {
+		t.Errorf("Expected remaining point to have value 1.0")
+	}
+}
 
-	if mt.MinTimestamp() != 100 {
-		t.Errorf("expected min timestamp 100, got %d", mt.MinTimestamp())
+func TestMinAndMaxTimestamp(t *testing.T) {
+	mem := memory.NewMemTable(5)
+
+	p1 := createTestPoint("cpu", 1.0)
+	time.Sleep(1 * time.Second)
+	p2 := createTestPoint("cpu", 2.0)
+
+	mem.WritePointWithFlush(p1)
+	mem.WritePointWithFlush(p2)
+
+	mint, err := mem.MinTimestamp(p1.TimeSeries)
+	if err != nil || mint != p1.Timestamp {
+		t.Errorf("Expected min timestamp %d, got %d", p1.Timestamp, mint)
 	}
 
-	if mt.MaxTimestamp() != 200 {
-		t.Errorf("expected max timestamp 200, got %d", mt.MaxTimestamp())
+	maxt, err := mem.MaxTimestamp(p1.TimeSeries)
+	if err != nil || maxt != p2.Timestamp {
+		t.Errorf("Expected max timestamp %d, got %d", p2.Timestamp, maxt)
+	}
+}
+
+func TestListTimeSeries(t *testing.T) {
+	mem := memory.NewMemTable(5)
+
+	p1 := createTestPoint("cpu", 1.0)
+	p2 := createTestPoint("mem", 2.0)
+
+	mem.WritePointWithFlush(p1)
+	mem.WritePointWithFlush(p2)
+
+	start := p1.Timestamp
+	end := p2.Timestamp
+
+	seriesMap := mem.ListTimeSeries(start, end)
+	if len(seriesMap) != 2 {
+		t.Errorf("Expected 2 series in range, got %d", len(seriesMap))
+	}
+	if len(seriesMap[p1.TimeSeries.Key()]) != 1 {
+		t.Errorf("Expected 1 point in cpu series")
+	}
+	if len(seriesMap[p2.TimeSeries.Key()]) != 1 {
+		t.Errorf("Expected 1 point in mem series")
 	}
 }
