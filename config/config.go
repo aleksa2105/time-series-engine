@@ -4,18 +4,11 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"os"
-	"time"
 )
 
 type MemTableConfig struct {
 	NumOfInstances uint64 `yaml:"num_of_instances"`
 	MaxSize        uint64 `yaml:"max_size"`
-}
-
-type TBConfig struct {
-	User     string        `yaml:"user"`
-	Capacity uint64        `yaml:"capacity"`
-	Interval time.Duration `yaml:"interval"`
 }
 
 type PageConfig struct {
@@ -30,7 +23,6 @@ type ParquetConfig struct {
 type Config struct {
 	MemTableConfig `yaml:"memtable"`
 	PageConfig     `yaml:"page"`
-	TBConfig       `yaml:"token_bucket"`
 	ParquetConfig  `yaml:"parquet"`
 }
 
@@ -38,7 +30,7 @@ func LoadConfiguration() Config {
 	fmt.Println("Loading configuration...")
 
 	// load system configuration
-	sysConfigFile, err := os.Open("./config/sys_config.yaml")
+	sysConfigFile, err := os.Open("C:\\Users\\Stefan\\Desktop\\time-series-engine\\time-series-engine\\config\\sys_config.yaml")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -46,28 +38,16 @@ func LoadConfiguration() Config {
 
 	var sysConfig Config
 	decoder := yaml.NewDecoder(sysConfigFile)
-	if err := decoder.Decode(&sysConfig); err != nil {
-		fmt.Println(err)
-	}
-
-	// load user configuration
-	userConfigFile, err := os.Open("./config/user_config.yaml")
+	err = decoder.Decode(&sysConfig)
 	if err != nil {
-		fmt.Println(err)
-	}
-	defer userConfigFile.Close()
-
-	var userConfig Config
-	decoder = yaml.NewDecoder(userConfigFile)
-	if err := decoder.Decode(&userConfig); err != nil {
 		fmt.Println(err)
 	}
 
 	// set default values if user messed up something
-	sysConfig.setDefaults()
+	// sysConfig.setDefaults()
 
 	// save sys config on disk
-	sysConfig.Save("./config/sys_config.yaml")
+	// sysConfig.Save("time-series-engine/config/sys_config.yaml")
 
 	fmt.Println("Configuration loaded successfully.")
 
@@ -102,19 +82,4 @@ func (c *Config) setDefaults() {
 	}
 
 	// TODO dodaj za page i parquet provjeru
-
-	// Token Bucket
-	tb := &c.TBConfig
-	if tb.User == "" {
-		tb.User = "user"
-		fmt.Println("Invalid TokenBucket user value. Set to default:", tb.User)
-	}
-	if tb.Capacity < 1 || tb.Capacity > 1000 {
-		tb.Capacity = 100
-		fmt.Println("Invalid TokenBucket capacity value. Set to default:", tb.Capacity)
-	}
-	if tb.Interval < time.Second || tb.Interval > time.Minute*5 {
-		tb.Interval = time.Minute
-		fmt.Println("Invalid TokenBucket interval value. Set to default:", tb.Interval)
-	}
 }

@@ -6,12 +6,16 @@ import (
 )
 
 type ValueChunk struct {
-	ActivePage *page.ValuePage
+	ActivePage    *page.ValuePage
+	FilePath      string
+	CurrentOffset uint64
 }
 
-func NewValueChunk(pageSize uint64) *ValueChunk {
+func NewValueChunk(pageSize uint64, filePath string) *ValueChunk {
 	return &ValueChunk{
-		ActivePage: page.NewValuePage(pageSize),
+		ActivePage:    page.NewValuePage(pageSize),
+		FilePath:      filePath,
+		CurrentOffset: 0,
 	}
 }
 
@@ -22,9 +26,15 @@ func (sc *ValueChunk) Add(
 	}
 
 	if tse.Size() > sc.ActivePage.Padding {
-		pm.Write(sc.ActivePage)
+		pm.WritePage(sc.ActivePage, sc.FilePath, int64(sc.CurrentOffset))
+		sc.CurrentOffset += pm.Config.PageSize
+
 		sc.ActivePage = page.NewValuePage(pm.Config.PageSize)
 	}
 
 	sc.ActivePage.AddEntry(tse)
+}
+
+func (sc *ValueChunk) Save(pm *page.Manager) {
+	pm.WritePage(sc.ActivePage, sc.FilePath, int64(sc.CurrentOffset))
 }

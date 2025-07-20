@@ -3,9 +3,5 @@ memtable:
     max_size: 100
 page:
     max_size: 1000
-token_bucket:
-    user: bojana
-    capacity: 100
-    interval: 1s
 parquet:
-    row_group_size: 5
+    row_group_size: 3

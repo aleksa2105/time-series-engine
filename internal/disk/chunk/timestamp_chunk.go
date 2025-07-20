@@ -6,30 +6,38 @@ import (
 )
 
 type TimestampChunk struct {
-	ActivePage *page.TimestampPage
+	ActivePage    *page.TimestampPage
+	FilePath      string
+	CurrentOffset uint64
 }
 
-func NewTimestampChunk(pageSize uint64) *TimestampChunk {
+func NewTimestampChunk(pageSize uint64, filePath string) *TimestampChunk {
 	return &TimestampChunk{
-		ActivePage: page.NewTimestampPage(pageSize),
+		ActivePage:    page.NewTimestampPage(pageSize),
+		FilePath:      filePath,
+		CurrentOffset: 0,
 	}
 }
 
-func (sc *TimestampChunk) Add(
-	pm *page.Manager, timestamp uint64) {
-
+func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) {
 	tse := &entry.TimestampEntry{
 		Value: timestamp,
 	}
 
-	if len(sc.ActivePage.Entries) != 0 {
-		tse.Value -= sc.ActivePage.Entries[len(sc.ActivePage.Entries)-1].Value
+	if len(tsc.ActivePage.Entries) != 0 {
+		tse.Value -= tsc.ActivePage.Entries[len(tsc.ActivePage.Entries)-1].Value
 	}
 
-	if tse.Size() > sc.ActivePage.Padding {
-		pm.Write(sc.ActivePage)
-		sc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
+	if tse.Size() > tsc.ActivePage.Padding {
+		pm.WritePage(tsc.ActivePage, tsc.FilePath, int64(tsc.CurrentOffset))
+		tsc.CurrentOffset += pm.Config.PageSize
+
+		tsc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
 	}
 
-	sc.ActivePage.AddEntry(tse)
+	tsc.ActivePage.AddEntry(tse)
+}
+
+func (tsc *TimestampChunk) Save(pm *page.Manager) {
+	pm.WritePage(tsc.ActivePage, tsc.FilePath, int64(tsc.CurrentOffset))
 }
