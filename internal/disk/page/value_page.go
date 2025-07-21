@@ -5,7 +5,7 @@ import (
 )
 
 type ValuePage struct {
-	Metadata        *ValueMetadata
+	Metadata        *Metadata
 	BitWriter       *BitWriter
 	ValueCompressor *entry.ValueCompressor
 	Padding         uint64
@@ -13,7 +13,7 @@ type ValuePage struct {
 
 func NewValuePage(pageSize uint64) *ValuePage {
 	return &ValuePage{
-		Metadata:        NewValueMetadata(),
+		Metadata:        NewMetadata(),
 		BitWriter:       NewBitWriter(pageSize - MetadataSize),
 		ValueCompressor: entry.NewValueCompressor(),
 		Padding:         (pageSize - MetadataSize) * 8, // x8 since value page is working with bits
