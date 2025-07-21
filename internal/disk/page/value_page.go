@@ -1,12 +1,14 @@
 package page
 
 import (
+	"errors"
+	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
 )
 
 type ValuePage struct {
 	Metadata        *Metadata
-	BitWriter       *BitWriter
+	BitWriter       *internal.BitWriter
 	ValueCompressor *entry.ValueCompressor
 	Padding         uint64
 }
@@ -14,7 +16,7 @@ type ValuePage struct {
 func NewValuePage(pageSize uint64) *ValuePage {
 	return &ValuePage{
 		Metadata:        NewMetadata(),
-		BitWriter:       NewBitWriter(pageSize - MetadataSize),
+		BitWriter:       internal.NewBitWriter(pageSize - MetadataSize),
 		ValueCompressor: entry.NewValueCompressor(),
 		Padding:         (pageSize - MetadataSize) * 8, // x8 since value page is working with bits
 	}
@@ -43,4 +45,21 @@ func (p *ValuePage) Serialize() []byte {
 	allBytes = append(allBytes, p.BitWriter.Bytes()...)
 
 	return allBytes
+}
+
+func DeserializeValuePage(bytes []byte) (*Metadata, []entry.Entry, error) {
+	md := DeserializeMetadata(bytes)
+	if md == nil {
+		return nil, nil, errors.New("[ERROR]: invalid metadata bytes")
+	}
+
+	entries := make([]entry.Entry, 0, md.Count)
+	r := internal.NewBitReader(bytes[MetadataSize:])
+	vd := entry.NewValueDecompressor(r)
+
+	for i := uint64(0); i < md.Count; i++ {
+		entries = append(entries, vd.DecompressNextEntry(i))
+	}
+
+	return md, entries, nil
 }

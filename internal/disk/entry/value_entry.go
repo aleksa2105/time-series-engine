@@ -12,7 +12,8 @@ type ValueEntry struct {
 
 func NewValueEntry(value float64) *ValueEntry {
 	return &ValueEntry{
-		Value: math.Float64bits(value),
+		Value:          math.Float64bits(value),
+		CompressedData: nil,
 	}
 }
 
