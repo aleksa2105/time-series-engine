@@ -1,6 +1,9 @@
 package page
 
-import "time-series-engine/internal/disk/entry"
+import (
+	"errors"
+	"time-series-engine/internal/disk/entry"
+)
 
 type TimestampPage struct {
 	Metadata   *Metadata
@@ -18,7 +21,7 @@ func NewTimestampPage(pageSize uint64) *TimestampPage {
 	}
 }
 
-func (p *TimestampPage) AddEntry(e entry.Entry) {
+func (p *TimestampPage) Add(e entry.Entry) {
 	tse, ok := e.(*entry.TimestampEntry)
 	if !ok {
 		return
@@ -50,27 +53,27 @@ func (p *TimestampPage) Serialize() []byte {
 	return allBytes
 }
 
-func DeserializeTimestampPage(bytes []byte) []*entry.TimestampEntry {
-	metadata := DeserializeMetadata(bytes)
+func DeserializeTimestampPage(bytes []byte) (*Metadata, []entry.Entry, error) {
+	md := DeserializeMetadata(bytes)
 
 	var (
 		offset  = MetadataSize
-		entries = make([]*entry.TimestampEntry, 0, metadata.Count)
+		entries = make([]entry.Entry, 0, md.Count)
 	)
 
 	firstEntry, n := entry.DeserializeTimestampEntry(bytes[offset:])
 	if n <= 0 {
-		return nil
+		return nil, nil, errors.New("[ERROR]: invalid first timestamp entry")
 	}
 	offset += n
 	entries = append(entries, firstEntry)
 
 	lastValue := firstEntry.Value
 	// deserialize remaining delta encoded entries
-	for i := uint64(1); i < metadata.Count; i++ {
+	for i := uint64(1); i < md.Count; i++ {
 		e, n := entry.DeserializeTimestampEntry(bytes[offset:])
 		if n <= 0 {
-			return nil
+			return nil, nil, errors.New("[ERROR]: invalid timestamp entry")
 		}
 		offset += n
 		e.Value += lastValue
@@ -78,5 +81,5 @@ func DeserializeTimestampPage(bytes []byte) []*entry.TimestampEntry {
 		entries = append(entries, e)
 	}
 
-	return entries
+	return md, entries, nil
 }

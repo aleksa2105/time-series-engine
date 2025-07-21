@@ -28,5 +28,5 @@ func (vc *ValueChunk) Add(pm *page.Manager, value float64) {
 
 	ve.CompressedData = cd
 
-	vc.ActivePage.AddEntry(ve)
+	vc.ActivePage.Add(ve)
 }

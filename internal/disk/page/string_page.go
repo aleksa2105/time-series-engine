@@ -16,7 +16,7 @@ func NewStringPage(pageSize uint64) *StringPage {
 	}
 }
 
-func (p *StringPage) AddEntry(e entry.Entry) {
+func (p *StringPage) Add(e entry.Entry) {
 	se, ok := e.(*entry.StringEntry)
 	if !ok {
 		return

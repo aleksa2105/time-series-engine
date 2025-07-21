@@ -22,7 +22,7 @@ func NewValuePage(pageSize uint64) *ValuePage {
 	}
 }
 
-func (p *ValuePage) AddEntry(e entry.Entry) {
+func (p *ValuePage) Add(e entry.Entry) {
 	ve, ok := e.(*entry.ValueEntry)
 	if !ok {
 		return

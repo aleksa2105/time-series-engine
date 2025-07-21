@@ -44,5 +44,5 @@ func (sc *StringChunk) Add(pm *page.Manager, value string) {
 		sc.ActivePage = page.NewStringPage(pm.Config.PageSize)
 	}
 
-	sc.ActivePage.AddEntry(newEntry)
+	sc.ActivePage.Add(newEntry)
 }

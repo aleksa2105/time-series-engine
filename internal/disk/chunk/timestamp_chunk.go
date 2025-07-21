@@ -23,5 +23,5 @@ func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) {
 		tsc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
 	}
 
-	tsc.ActivePage.AddEntry(tse)
+	tsc.ActivePage.Add(tse)
 }
