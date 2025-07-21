@@ -6,23 +6,28 @@ import (
 )
 
 type ValueEntry struct {
-	Value float64
+	Value          uint64
+	CompressedData *CompressedData
+}
+
+func NewValueEntry(value float64) *ValueEntry {
+	return &ValueEntry{
+		Value: math.Float64bits(value),
+	}
 }
 
 func (ve *ValueEntry) Serialize() []byte {
-	bits := math.Float64bits(ve.Value)
 	bytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(bytes, bits)
+	binary.BigEndian.PutUint64(bytes, ve.Value)
 	return bytes
 }
 
 func DeserializeValueEntry(b []byte) *ValueEntry {
-	bits := binary.BigEndian.Uint64(b)
-	ve := &ValueEntry{}
-	ve.Value = math.Float64frombits(bits)
-	return ve
+	return &ValueEntry{
+		Value: binary.BigEndian.Uint64(b),
+	}
 }
 
 func (ve *ValueEntry) Size() uint64 {
-	return uint64(len(ve.Serialize()))
+	return uint64(ve.CompressedData.ValueSize)
 }
