@@ -19,7 +19,8 @@ type TBConfig struct {
 }
 
 type PageConfig struct {
-	PageSize uint64 `yaml:"max_size"`
+	PageSize       uint64 `yaml:"max_size"`
+	FilenameLength uint64 `yaml:"file_name_length"`
 }
 
 type ParquetConfig struct {
@@ -27,11 +28,18 @@ type ParquetConfig struct {
 	RowGroupSize uint64 `yaml:"row_group_size"`
 }
 
+type WALConfig struct {
+	LogsDirPath        string `yaml:"logs_dir_path"`
+	UnstagedOffset     uint64 `yaml:"unstaged_offset"`
+	SegmentSizeInPages uint64 `yaml:"segment_size_in_pages"`
+}
+
 type Config struct {
 	MemTableConfig `yaml:"memtable"`
 	PageConfig     `yaml:"page"`
 	TBConfig       `yaml:"token_bucket"`
 	ParquetConfig  `yaml:"parquet"`
+	WALConfig      `yaml:"wal"`
 }
 
 func LoadConfiguration() Config {
