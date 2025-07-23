@@ -19,20 +19,20 @@ func NewValueChunk(pageSize uint64, filePath string) *ValueChunk {
 	}
 }
 
-func (sc *ValueChunk) Add(
-	pm *page.Manager, value float64) {
-	tse := &entry.ValueEntry{
-		Value: value,
+func (vc *ValueChunk) Add(pm *page.Manager, value float64) {
+	cd := vc.ActivePage.ValueCompressor.CompressNextValue(value, vc.ActivePage.Metadata.Count)
+
+	// if there is no space, we need to calculate compressed entry again for empty page
+	if uint64(cd.ValueSize) > vc.ActivePage.Padding {
+		pm.Write(vc.ActivePage)
+		vc.ActivePage = page.NewValuePage(pm.Config.PageSize)
+		cd = vc.ActivePage.ValueCompressor.CompressNextValue(value, vc.ActivePage.Metadata.Count)
 	}
 
-	if tse.Size() > sc.ActivePage.Padding {
-		pm.WritePage(sc.ActivePage, sc.FilePath, int64(sc.CurrentOffset))
-		sc.CurrentOffset += pm.Config.PageSize
+	ve := entry.NewValueEntry(value)
+	ve.CompressedData = cd
 
-		sc.ActivePage = page.NewValuePage(pm.Config.PageSize)
-	}
-
-	sc.ActivePage.AddEntry(tse)
+	vc.ActivePage.Add(ve)
 }
 
 func (sc *ValueChunk) Save(pm *page.Manager) {

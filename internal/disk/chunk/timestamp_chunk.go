@@ -20,22 +20,14 @@ func NewTimestampChunk(pageSize uint64, filePath string) *TimestampChunk {
 }
 
 func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) {
-	tse := &entry.TimestampEntry{
-		Value: timestamp,
-	}
-
-	if len(tsc.ActivePage.Entries) != 0 {
-		tse.Value -= tsc.ActivePage.Entries[len(tsc.ActivePage.Entries)-1].Value
-	}
+	tse := entry.NewTimestampEntry(timestamp)
 
 	if tse.Size() > tsc.ActivePage.Padding {
-		pm.WritePage(tsc.ActivePage, tsc.FilePath, int64(tsc.CurrentOffset))
-		tsc.CurrentOffset += pm.Config.PageSize
-
+		pm.Write(tsc.ActivePage)
 		tsc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
 	}
 
-	tsc.ActivePage.AddEntry(tse)
+	tsc.ActivePage.Add(tse)
 }
 
 func (tsc *TimestampChunk) Save(pm *page.Manager) {
