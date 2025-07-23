@@ -71,7 +71,7 @@ func DeserializeValuePage(bytes []byte) (Page, error) {
 	vr := entry.NewValueReconstructor(bytes[MetadataSize:])
 
 	for i := uint64(0); i < p.Metadata.Count; i++ {
-		ve := vr.ReconstructNextValue()
+		ve := vr.ReconstructNext()
 		p.Entries = append(p.Entries, ve)
 		p.Padding -= ve.Size()
 	}

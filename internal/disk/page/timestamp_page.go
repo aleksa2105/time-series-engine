@@ -6,18 +6,20 @@ import (
 )
 
 type TimestampPage struct {
-	Metadata   *Metadata
-	Padding    uint64
-	lastValue  uint64
-	serialized []byte
+	Metadata            *Metadata
+	Entries             []entry.Entry
+	TimestampCompressor *entry.TimestampCompressor
+	Padding             uint64
+	pageSize            uint64
 }
 
 func NewTimestampPage(pageSize uint64) *TimestampPage {
 	return &TimestampPage{
-		Metadata:   NewMetadata(),
-		Padding:    pageSize - MetadataSize,
-		lastValue:  0,
-		serialized: make([]byte, 0, pageSize-MetadataSize),
+		Metadata:            NewMetadata(),
+		Entries:             make([]entry.Entry, 0),
+		TimestampCompressor: entry.NewTimestampCompressor(),
+		Padding:             pageSize - MetadataSize,
+		pageSize:            pageSize,
 	}
 }
 
@@ -28,24 +30,19 @@ func (p *TimestampPage) Add(e entry.Entry) {
 	}
 
 	p.Metadata.UpdateMinMaxValue(tse.Value)
-
-	// apply delta
-	delta := tse.Value - p.lastValue
-	p.lastValue = tse.Value
-	tse.Value = delta
-
-	serializedTse := tse.Serialize()
-	p.Padding -= uint64(len(serializedTse))
-	p.serialized = append(p.serialized, serializedTse...)
-
 	p.Metadata.Count++
+	p.Entries = append(p.Entries, e)
+	p.Padding -= tse.Size()
 }
 
 func (p *TimestampPage) Serialize() []byte {
 	allBytes := make([]byte, 0)
 	allBytes = append(allBytes, p.Metadata.Serialize()...)
 
-	allBytes = append(allBytes, p.serialized...)
+	for _, e := range p.Entries {
+		tse, _ := e.(*entry.TimestampEntry)
+		allBytes = append(allBytes, tse.Serialize()...)
+	}
 
 	paddingBytes := make([]byte, p.Padding)
 	allBytes = append(allBytes, paddingBytes...)
@@ -53,33 +50,24 @@ func (p *TimestampPage) Serialize() []byte {
 	return allBytes
 }
 
-func DeserializeTimestampPage(bytes []byte) (*Metadata, []entry.Entry, error) {
-	md := DeserializeMetadata(bytes)
+func DeserializeTimestampPage(bytes []byte) (Page, error) {
+	pageSize := uint64(len(bytes))
+	p := NewTimestampPage(pageSize)
 
-	var (
-		offset  = MetadataSize
-		entries = make([]entry.Entry, 0, md.Count)
-	)
-
-	firstEntry, n := entry.DeserializeTimestampEntry(bytes[offset:])
-	if n <= 0 {
-		return nil, nil, errors.New("[ERROR]: invalid first timestamp entry")
-	}
-	offset += n
-	entries = append(entries, firstEntry)
-
-	lastValue := firstEntry.Value
-	// deserialize remaining delta encoded entries
-	for i := uint64(1); i < md.Count; i++ {
-		e, n := entry.DeserializeTimestampEntry(bytes[offset:])
-		if n <= 0 {
-			return nil, nil, errors.New("[ERROR]: invalid timestamp entry")
-		}
-		offset += n
-		e.Value += lastValue
-		lastValue = e.Value
-		entries = append(entries, e)
+	p.Metadata = DeserializeMetadata(bytes)
+	if p.Metadata == nil {
+		return nil, errors.New("[ERROR]: invalid timestamp page")
 	}
 
-	return md, entries, nil
+	tsr := entry.NewTimestampReconstructor(bytes[MetadataSize:])
+
+	for i := uint64(0); i < p.Metadata.Count; i++ {
+		tse := tsr.ReconstructNext()
+		p.Entries = append(p.Entries, tse)
+		p.Padding -= tse.Size()
+	}
+
+	p.TimestampCompressor.Update(tsr.LastValue())
+
+	return p, nil
 }

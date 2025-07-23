@@ -5,22 +5,19 @@ import (
 )
 
 type TimestampEntry struct {
-	Value uint64
+	Value          uint64
+	CompressedData *TSCompressedData
 }
 
-func NewTimestampEntry(value uint64) *TimestampEntry {
+func NewTimestampEntry(value uint64, compressedData *TSCompressedData) *TimestampEntry {
 	return &TimestampEntry{
-		Value: value,
+		Value:          value,
+		CompressedData: compressedData,
 	}
 }
 
 func (tse *TimestampEntry) Serialize() []byte {
-	bytes := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(bytes, tse.Value)
-	if n <= 0 {
-		return nil
-	}
-	return bytes[:n]
+	return tse.CompressedData.Bytes
 }
 
 func DeserializeTimestampEntry(b []byte) (*TimestampEntry, uint64) {
@@ -35,5 +32,5 @@ func DeserializeTimestampEntry(b []byte) (*TimestampEntry, uint64) {
 }
 
 func (tse *TimestampEntry) Size() uint64 {
-	return uint64(len(tse.Serialize()))
+	return uint64(len(tse.CompressedData.Bytes))
 }

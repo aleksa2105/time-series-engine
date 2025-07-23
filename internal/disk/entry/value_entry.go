@@ -7,10 +7,10 @@ import (
 
 type ValueEntry struct {
 	Value          float64
-	CompressedData *CompressedData
+	CompressedData *ValCompressedData
 }
 
-func NewValueEntry(value float64, compressedData *CompressedData) *ValueEntry {
+func NewValueEntry(value float64, compressedData *ValCompressedData) *ValueEntry {
 	return &ValueEntry{
 		Value:          value,
 		CompressedData: compressedData,

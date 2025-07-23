@@ -20,11 +20,16 @@ func NewTimestampChunk(pageSize uint64, filePath string) *TimestampChunk {
 }
 
 func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) {
-	tse := entry.NewTimestampEntry(timestamp)
+	cd := tsc.ActivePage.TimestampCompressor.CompressNext(
+		timestamp, tsc.ActivePage.Metadata.Count)
+
+	tse := entry.NewTimestampEntry(timestamp, cd)
 
 	if tse.Size() > tsc.ActivePage.Padding {
-		pm.Write(tsc.ActivePage)
+		pm.WritePage(tsc.ActivePage)
 		tsc.ActivePage = page.NewTimestampPage(pm.Config.PageSize)
+		tse.CompressedData = tsc.ActivePage.TimestampCompressor.CompressNext(
+			timestamp, tsc.ActivePage.Metadata.Count)
 	}
 
 	tsc.ActivePage.Add(tse)
