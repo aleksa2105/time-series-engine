@@ -17,7 +17,7 @@ func NewTimeSeries(measurementName string, tags Tags) *TimeSeries {
 	}
 }
 
-func (ts *TimeSeries) Key() string {
+func (ts *TimeSeries) Hash() string {
 	var stringBuilder strings.Builder
 
 	stringBuilder.WriteString(ts.MeasurementName)
