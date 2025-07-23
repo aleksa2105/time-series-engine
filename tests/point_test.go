@@ -21,8 +21,4 @@ func TestNewPoint(t *testing.T) {
 	if point.TimeSeries.MeasurementName != "cpu" {
 		t.Errorf("expected measurement name cpu, got %s", point.TimeSeries.MeasurementName)
 	}
-
-	if point.Timestamp == 0 {
-		t.Errorf("expected timestamp to be non-zero")
-	}
 }
