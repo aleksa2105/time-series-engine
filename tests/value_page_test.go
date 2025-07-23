@@ -2,7 +2,6 @@ package tests
 
 import (
 	"fmt"
-	"math"
 	"testing"
 	"time-series-engine/config"
 	"time-series-engine/internal/disk/chunk"
@@ -14,20 +13,13 @@ func TestValuePage(t *testing.T) {
 
 	const PageSize uint64 = 100
 
-	c := chunk.NewValueChunk(PageSize)
+	c := chunk.NewValueChunk(PageSize, "tests/test")
 	pm := page.NewManager(config.PageConfig{PageSize: PageSize})
 
-	numEntries := 10
-	c.Add(pm, 1.52131)
-	c.Add(pm, 2.553252)
-	c.Add(pm, 300000.63413412)
-	c.Add(pm, 4.521788181)
-	c.Add(pm, 5.2528958181)
-	c.Add(pm, 8.551221111)
-	c.Add(pm, 12.85721751)
-	c.Add(pm, 5.528951)
-	c.Add(pm, 21.952718)
-	c.Add(pm, 2002.525)
+	numEntries := 30
+	for i := 0; i < numEntries; i++ {
+		c.Add(pm, float64(i)+1)
+	}
 
 	serializedBytes := c.ActivePage.Serialize()
 
@@ -35,25 +27,19 @@ func TestValuePage(t *testing.T) {
 		t.Errorf("Serialized size does not match. Expected %d, got %d", PageSize, len(serializedBytes))
 	}
 
-	md, entries, err := page.DeserializeValuePage(serializedBytes)
+	p, err := page.DeserializeValuePage(serializedBytes)
+	vp, _ := p.(*page.ValuePage)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if md.Count != uint64(numEntries) {
-		t.Fatalf("expected %d entries, got %d", numEntries, md.Count)
+	if vp.Metadata.Count != uint64(numEntries) {
+		t.Fatalf("expected %d entries, got %d", numEntries, vp.Metadata.Count)
 	}
-	if len(entries) != int(md.Count) {
-		t.Fatalf("expected %d entries, got %d", numEntries, md.Count)
+	if len(vp.Entries) != int(vp.Metadata.Count) {
+		t.Fatalf("expected %d entries, got %d", numEntries, len(vp.Entries))
 	}
 
-	fmt.Println()
-	fmt.Println("MIN value")
-	fmt.Println(math.Float64frombits(md.MinValue))
-	fmt.Println("MAX value")
-	fmt.Println(math.Float64frombits(md.MaxValue))
-	fmt.Println()
-
-	for i, e := range entries {
+	for i, e := range vp.Entries {
 		ve, ok := e.(*entry.ValueEntry)
 		if !ok {
 			t.Fatal("expected entry to be *entry.ValueEntry")

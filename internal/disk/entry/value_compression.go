@@ -6,21 +6,25 @@ package entry
 	Three cases are used to compress the XOR between the current and previous value:
 
 	Case 1: Value is the same as the previous one.
-	- Represented by a single '0' bit.
+	- Represented by a single '00' bit.
 	- No additional bits are stored.
 
 	Case 2: Value differs from the previous, but the number of leading and trailing zeros
 	in the XOR result is the same as in the previous difference.
-	- Represented by the bit pattern '10'.
+	- Represented by the bit pattern '01'.
 	- Followed directly by the meaningful XOR bits.
 
 	Case 3: Value differs from the previous, and the number of leading or trailing zeros
 	has changed compared to the previous XOR result.
-	- Represented by the bit pattern '11'.
+	- Represented by the bit pattern '10'.
 	- Followed by:
 		- 6 bits: number of leading zeros,
 		- 6 bits: number of meaningful XOR bits,
 		- XOR bits of specified length.
+
+	Case 4: Value differs greatly from the previous, and the number of XOR bits is larger than maxXorLen
+	- Represented by the bit pattern '11'
+	- Followed by scaled value
 
 	Decompression reconstructs the current value as:
 		current = previous ^ (XOR bits << number of trailing zeros)
@@ -33,28 +37,25 @@ import (
 )
 
 const scaleFactor = 100000
+const maxXorLen = 50
 
 type CompressedData struct {
-	Value     uint64
-	ValueSize int
-	Leading   int
-	Trailing  int
+	Value      uint64
+	ValueSize  int
+	Compressed bool
 }
 
-func NewCompressedData(value uint64, valueSize, leading, trailing int) *CompressedData {
+func NewCompressedData(value uint64, valueSize int, compressed bool) *CompressedData {
 	return &CompressedData{
-		Value:     value,
-		ValueSize: valueSize,
-		Leading:   leading,
-		Trailing:  trailing,
+		Value:      value,
+		ValueSize:  valueSize,
+		Compressed: compressed,
 	}
 }
 
-func (cd *CompressedData) Update(value uint64, valueSize, leading, trailing int) {
+func (cd *CompressedData) Update(value uint64, valueSize int) {
 	cd.Value = value
 	cd.ValueSize = valueSize
-	cd.Leading = leading
-	cd.Trailing = trailing
 }
 
 type ValueCompressor struct {
@@ -68,53 +69,58 @@ func NewValueCompressor() *ValueCompressor {
 }
 
 func (vc *ValueCompressor) CompressNextValue(value float64, count uint64) *CompressedData {
-	var size = 0
-	var result uint64 = 0
+	var (
+		size       = 0
+		result     = uint64(0)
+		compressed = false
+	)
 
-	scaled := scale(value)
+	valueScaled := scale(value)
 
 	if count == 0 { // if first value to be written on page
-		vc.Update(scaled, 0, 0)
-		return NewCompressedData(scaled, 64, 0, 0)
+		vc.Update(valueScaled, 0, 0)
+		return NewCompressedData(valueScaled, 64, false)
 	} else {
-		xor := scaled ^ vc.lastValue
+		xor := valueScaled ^ vc.lastValue
 		leading := bits.LeadingZeros64(xor)
 		trailing := bits.TrailingZeros64(xor)
-		if xor == 0 {
-			result, size = 0, 1
+		xorLen := 64 - leading - trailing
+
+		if xor == 0 { // Case 1
+			result, size, compressed = 0, 2, true
+		} else if xorLen > maxXorLen { // Case 4
+			result, size, compressed = valueScaled, 64, false
 		} else if leading == vc.lastLeading && trailing == vc.lastTrailing {
-			result, size = vc.Case2(xor, leading, trailing)
+			result, size, compressed = vc.Case2(xor, leading, trailing)
 		} else {
-			result, size = vc.Case3(xor, leading, trailing)
+			result, size, compressed = vc.Case3(xor, leading, trailing)
 		}
-		vc.Update(scaled, leading, trailing)
-		return NewCompressedData(result, size, leading, trailing)
+		vc.Update(valueScaled, leading, trailing)
+		return NewCompressedData(result, size, compressed)
 	}
 }
 
-func (vc *ValueCompressor) Case2(xor uint64, leading, trailing int) (uint64, int) {
-	const mask = uint64(2) << 62 // mask is 10000000...
+func (vc *ValueCompressor) Case2(xor uint64, leading, trailing int) (uint64, int, bool) {
+	const mask = uint64(1) << 62 // mask is 01000000...
 
 	xorLen := 64 - leading - trailing
 	xorShifted := (xor >> trailing) << (62 - xorLen) // shift xor bits right behind mask
 	result := mask | xorShifted
-	return result, xorLen + 2
+	return result, xorLen + 2, true
 }
 
-func (vc *ValueCompressor) Case3(xor uint64, leading, trailing int) (uint64, int) {
-	const mask = uint64(3) << 62 // mask is 11000000...
+func (vc *ValueCompressor) Case3(xor uint64, leading, trailing int) (uint64, int, bool) {
+	const mask = uint64(2) << 62 // mask is 10000000...
 
 	xorLen := 64 - leading - trailing
 
-	// num of leading zeros uses 5 bits
 	leadingShifted := uint64(leading) << 56 // 64-2-6
-	// num of bits in xor uses 6 bits
-	xorSizeShifted := uint64(xorLen) << 50 // 64-2-6-6
+	xorSizeShifted := uint64(xorLen) << 50  // 64-2-6-6
 
 	xorShifted := (xor >> trailing) << (50 - xorLen)
 
 	result := mask | leadingShifted | xorSizeShifted | xorShifted
-	return result, xorLen + 14
+	return result, xorLen + 14, true
 }
 
 func (vc *ValueCompressor) Update(newLastValue uint64, newLastLeading, newLastTrailing int) {
@@ -125,70 +131,108 @@ func (vc *ValueCompressor) Update(newLastValue uint64, newLastLeading, newLastTr
 
 func scale(value float64) uint64 {
 	scaled := math.Trunc(value * scaleFactor)
-	return uint64(scaled)
+	return math.Float64bits(scaled)
 }
 
 func downScale(value uint64) float64 {
-	dScaled := float64(value) / float64(scaleFactor)
-	return dScaled
+	scaled := math.Float64frombits(value)
+	return scaled / scaleFactor
 }
 
-type ValueDecompressor struct {
+type ValueReconstructor struct {
 	bitReader    *internal.BitReader
 	lastValue    uint64
 	lastLeading  int
 	lastTrailing int
 }
 
-func NewValueDecompressor(bitReader *internal.BitReader) *ValueDecompressor {
-	return &ValueDecompressor{
-		bitReader: bitReader,
+func NewValueReconstructor(bytes []byte) *ValueReconstructor {
+	return &ValueReconstructor{
+		bitReader: internal.NewBitReader(bytes),
 	}
 }
 
-func (vd *ValueDecompressor) DecompressNextValue(count uint64) *ValueEntry {
-	if count == 0 {
-		readBits := vd.bitReader.ReadBits(64)
-		vd.lastValue = readBits
-		vd.lastLeading = 0
-		vd.lastTrailing = 0
-		return NewValueEntry(downScale(readBits))
+func (vr *ValueReconstructor) ReconstructNextValue() *ValueEntry {
+	controlBits := vr.bitReader.ReadBits(2)
+	if controlBits == 0 { // Case 1
+		cd := NewCompressedData(0, 2, true)
+		return NewValueEntry(downScale(vr.lastValue), cd)
 	}
-
-	controlBit := vd.bitReader.ReadBits(1)
-	if controlBit == 0 { // Case 1
-		return NewValueEntry(downScale(vd.lastValue))
+	if controlBits == 1 {
+		return vr.Case2()
 	}
-	secondBit := vd.bitReader.ReadBits(1)
-	if secondBit == 0 {
-		return vd.Case2()
+	if controlBits == 2 {
+		return vr.Case3()
 	}
-	if secondBit == 1 {
-		return vd.Case3()
+	if controlBits == 3 {
+		return vr.Case4()
 	}
 	return nil
 }
 
-func (vd *ValueDecompressor) Case2() *ValueEntry {
-	xorLen := 64 - vd.lastLeading - vd.lastTrailing
-	xorBits := vd.bitReader.ReadBits(xorLen)
-	xorBits <<= vd.lastTrailing
+func (vr *ValueReconstructor) Case2() *ValueEntry {
+	xorLen := 64 - vr.lastLeading - vr.lastTrailing
+	xor := vr.bitReader.ReadBits(xorLen)
+	xor <<= vr.lastTrailing
 
-	value := vd.lastValue ^ xorBits
-	vd.lastValue = value
-	return NewValueEntry(downScale(value))
+	value := vr.lastValue ^ xor
+	vr.Update(value, vr.lastLeading, vr.lastTrailing)
+
+	const mask = uint64(1) << 62 // mask is 01000000...
+
+	xorShifted := (xor >> vr.lastTrailing) << (62 - xorLen) // shift xor bits right behind mask
+	cmpVal := mask | xorShifted
+	cmpValSize := xorLen + 2
+	cd := NewCompressedData(cmpVal, cmpValSize, true)
+
+	return NewValueEntry(downScale(value), cd)
 }
 
-func (vd *ValueDecompressor) Case3() *ValueEntry {
-	leading := vd.bitReader.ReadBits(6)
-	xorLen := vd.bitReader.ReadBits(6)
-	xorBits := vd.bitReader.ReadBits(int(xorLen))
+func (vr *ValueReconstructor) Case3() *ValueEntry {
+	leading := vr.bitReader.ReadBits(6)
+	xorLen := vr.bitReader.ReadBits(6)
+	xor := vr.bitReader.ReadBits(int(xorLen))
 	trailing := 64 - leading - xorLen
-	xorBits <<= trailing
+	xor <<= trailing
 
-	value := vd.lastValue ^ xorBits
-	vd.lastValue = value
-	vd.lastLeading = int(leading)
-	vd.lastTrailing = int(trailing)
-	return NewValueEntry(downScale(value))
+	value := vr.lastValue ^ xor
+	vr.Update(value, int(leading), int(trailing))
+
+	leadingShifted := leading << 56 // 64-2-6
+	xorLenShifted := xorLen << 50   // 64-2-6-6
+
+	const mask = uint64(2) << 62 // mask is 10000000...
+
+	xorShifted := (xor >> trailing) << (50 - xorLen)
+	cmpVal := mask | leadingShifted | xorLenShifted | xorShifted
+	cmpValSize := xorLen + 14
+	cd := NewCompressedData(cmpVal, int(cmpValSize), true)
+
+	return NewValueEntry(downScale(value), cd)
+}
+
+func (vr *ValueReconstructor) Case4() *ValueEntry {
+	value := vr.bitReader.ReadBits(64)
+	vr.Update(value, 0, 0)
+	cd := NewCompressedData(value, 64, false)
+
+	return NewValueEntry(downScale(value), cd)
+}
+
+func (vr *ValueReconstructor) Update(lastValue uint64, lastLeading, lastTrailing int) {
+	vr.lastValue = lastValue
+	vr.lastLeading = lastLeading
+	vr.lastTrailing = lastTrailing
+}
+
+func (vr *ValueReconstructor) LastValue() uint64 {
+	return vr.lastValue
+}
+
+func (vr *ValueReconstructor) LastLeading() int {
+	return vr.lastLeading
+}
+
+func (vr *ValueReconstructor) LastTrailing() int {
+	return vr.lastTrailing
 }

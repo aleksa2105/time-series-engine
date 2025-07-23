@@ -10,10 +10,10 @@ type ValueEntry struct {
 	CompressedData *CompressedData
 }
 
-func NewValueEntry(value float64) *ValueEntry {
+func NewValueEntry(value float64, compressedData *CompressedData) *ValueEntry {
 	return &ValueEntry{
 		Value:          value,
-		CompressedData: nil,
+		CompressedData: compressedData,
 	}
 }
 
@@ -30,5 +30,8 @@ func DeserializeValueEntry(b []byte) *ValueEntry {
 }
 
 func (ve *ValueEntry) Size() uint64 {
-	return uint64(ve.CompressedData.ValueSize)
+	if ve.CompressedData.Compressed == true {
+		return uint64(ve.CompressedData.ValueSize)
+	}
+	return uint64(ve.CompressedData.ValueSize) + 2
 }

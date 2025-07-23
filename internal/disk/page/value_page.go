@@ -9,17 +9,19 @@ import (
 
 type ValuePage struct {
 	Metadata        *Metadata
-	BitWriter       *internal.BitWriter
+	Entries         []entry.Entry
 	ValueCompressor *entry.ValueCompressor
 	Padding         uint64
+	pageSize        uint64
 }
 
 func NewValuePage(pageSize uint64) *ValuePage {
 	return &ValuePage{
 		Metadata:        NewMetadata(),
-		BitWriter:       internal.NewBitWriter(pageSize - MetadataSize),
+		Entries:         make([]entry.Entry, 0),
 		ValueCompressor: entry.NewValueCompressor(),
 		Padding:         (pageSize - MetadataSize) * 8, // x8 since value page is working with bits
+		pageSize:        pageSize,
 	}
 }
 
@@ -30,7 +32,7 @@ func (p *ValuePage) Add(e entry.Entry) {
 	}
 	p.Metadata.UpdateMinMaxValue(math.Float64bits(ve.Value))
 	p.Metadata.Count++
-	p.BitWriter.WriteBits(ve.CompressedData.Value, ve.CompressedData.ValueSize)
+	p.Entries = append(p.Entries, ve)
 	p.Padding -= ve.Size()
 }
 
@@ -38,28 +40,43 @@ func (p *ValuePage) Serialize() []byte {
 	allBytes := make([]byte, 0)
 	allBytes = append(allBytes, p.Metadata.Serialize()...)
 
-	for i := uint64(0); i < p.Padding; i++ { // write remaining padding bits
-		p.BitWriter.WriteBit(0)
+	w := internal.NewBitWriter(p.pageSize - MetadataSize)
+
+	for _, e := range p.Entries {
+		ve, _ := e.(*entry.ValueEntry)
+		if ve.CompressedData.Compressed == false {
+			w.WriteBits(uint64(3), 2)
+		}
+		w.WriteBits(ve.CompressedData.Value, ve.CompressedData.ValueSize)
 	}
 
-	allBytes = append(allBytes, p.BitWriter.Bytes()...)
+	for i := uint64(0); i < p.Padding; i++ { // write remaining padding bits
+		w.WriteBit(0)
+	}
+
+	allBytes = append(allBytes, w.Bytes()...)
 
 	return allBytes
 }
 
-func DeserializeValuePage(bytes []byte) (*Metadata, []entry.Entry, error) {
-	md := DeserializeMetadata(bytes)
-	if md == nil {
-		return nil, nil, errors.New("[ERROR]: invalid metadata bytes")
+func DeserializeValuePage(bytes []byte) (Page, error) {
+	pageSize := uint64(len(bytes))
+	p := NewValuePage(pageSize)
+
+	p.Metadata = DeserializeMetadata(bytes)
+	if p.Metadata == nil {
+		return nil, errors.New("[ERROR]: invalid metadata bytes")
 	}
 
-	entries := make([]entry.Entry, 0, md.Count)
-	r := internal.NewBitReader(bytes[MetadataSize:])
-	vd := entry.NewValueDecompressor(r)
+	vr := entry.NewValueReconstructor(bytes[MetadataSize:])
 
-	for i := uint64(0); i < md.Count; i++ {
-		entries = append(entries, vd.DecompressNextValue(i))
+	for i := uint64(0); i < p.Metadata.Count; i++ {
+		ve := vr.ReconstructNextValue()
+		p.Entries = append(p.Entries, ve)
+		p.Padding -= ve.Size()
 	}
 
-	return md, entries, nil
+	p.ValueCompressor.Update(vr.LastValue(), vr.LastLeading(), vr.LastTrailing())
+
+	return p, nil
 }
