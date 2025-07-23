@@ -63,7 +63,7 @@ func (wal *WriteAheadLog) LoadWal() error {
 
 		segment := fmt.Sprint(segmentIndex)
 		segment = fmt.Sprintf("wal_%s%s.log",
-			strings.Repeat("0", int(wal.pageManager.FilenameLength())-len(segment)), segment)
+			strings.Repeat("0", int(wal.pageManager.Config.FilenameLength)-len(segment)), segment)
 		wal.segments = append(wal.segments, segment)
 
 		err = os.Rename(wal.config.LogsDirPath+"/"+file.Name(), wal.config.LogsDirPath+"/"+segment)
@@ -83,21 +83,21 @@ func (wal *WriteAheadLog) LoadWal() error {
 
 	fileSize := stat.Size()
 	if fileSize <= int64(INDEX) {
-		wal.activePage = page.NewWALPage(wal.pageManager.PageSize())
+		wal.activePage = page.NewWALPage(wal.pageManager.Config.PageSize)
 		wal.activePageIndex = 0
 		return nil
 	}
 
-	offset := fileSize - int64(wal.pageManager.PageSize())
-	wal.activePage = page.NewWALPage(wal.pageManager.PageSize())
-	activePageBytes, err := wal.pageManager.ReadBytes(activeSegmentFilename, offset, int64(wal.pageManager.PageSize()))
+	offset := fileSize - int64(wal.pageManager.Config.PageSize)
+	wal.activePage = page.NewWALPage(wal.pageManager.Config.PageSize)
+	activePageBytes, err := wal.pageManager.ReadBytes(activeSegmentFilename, offset, int64(wal.pageManager.Config.PageSize))
 
-	wal.activePage.Deserialize(activePageBytes)
+	err = wal.activePage.Deserialize(activePageBytes)
 	if err != nil {
 		return err
 	}
 
-	lastPageIndex := uint64(fileSize-INDEX) / wal.pageManager.PageSize()
+	lastPageIndex := uint64(fileSize-INDEX) / wal.pageManager.Config.PageSize
 	if lastPageIndex != 0 {
 		lastPageIndex -= 1
 	}
@@ -109,7 +109,7 @@ func (wal *WriteAheadLog) LoadWal() error {
 func (wal *WriteAheadLog) createNewSegment() error {
 	segment := fmt.Sprint(wal.LastSegmentIndex() + 1)
 	segment = fmt.Sprintf("wal_%s%s.log",
-		strings.Repeat("0", int(wal.pageManager.FilenameLength())-len(segment)), segment)
+		strings.Repeat("0", int(wal.pageManager.Config.FilenameLength)-len(segment)), segment)
 
 	filename := wal.config.LogsDirPath + "/" + segment
 	err := wal.pageManager.CreateFile(filename)
@@ -126,7 +126,7 @@ func (wal *WriteAheadLog) createNewSegment() error {
 
 	wal.segments = append(wal.segments, segment)
 	wal.activeSegment = segment
-	wal.activePage = page.NewWALPage(wal.pageManager.PageSize())
+	wal.activePage = page.NewWALPage(wal.pageManager.Config.PageSize)
 	wal.activePageIndex = 0
 	return nil
 }
@@ -142,7 +142,7 @@ func (wal *WriteAheadLog) changePage() error {
 	}
 
 	if !newSegBool {
-		wal.activePage = page.NewWALPage(wal.pageManager.PageSize())
+		wal.activePage = page.NewWALPage(wal.pageManager.Config.PageSize)
 		wal.activePageIndex += 1
 	}
 
@@ -162,7 +162,7 @@ func (wal *WriteAheadLog) ActiveSegment() string {
 }
 
 func (wal *WriteAheadLog) ActiveSegmentOffset() uint64 {
-	return INDEX + (wal.activePageIndex+1)*wal.pageManager.PageSize() - wal.activePage.PaddingSize()
+	return INDEX + (wal.activePageIndex+1)*wal.pageManager.Config.PageSize - wal.activePage.PaddingSize()
 }
 
 func (wal *WriteAheadLog) UnstagedOffset() uint64 {

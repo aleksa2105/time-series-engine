@@ -13,15 +13,24 @@ type Metadata struct {
 
 	MinValue float64
 	MaxValue float64
+
+	PointsNumber  uint64
+	RowGroupIndex uint64
+
+	TimestampOffset uint64
+	ValueOffset     uint64
 }
 
-func NewMetadata() *Metadata {
+func NewMetadata(rgIndex uint64) *Metadata {
 	return &Metadata{
 		MinTimestamp: ^uint64(0), // max uint64 (all bits are 1)
 		MaxTimestamp: 0,
 
 		MinValue: math.Inf(1),
 		MaxValue: math.Inf(-1),
+
+		PointsNumber:  0,
+		RowGroupIndex: rgIndex,
 	}
 }
 
@@ -39,6 +48,8 @@ func (m *Metadata) Update(p *internal.Point) {
 	if p.Value > m.MaxValue {
 		m.MaxValue = p.Value
 	}
+
+	m.PointsNumber++
 }
 
 func (m *Metadata) Serialize() []byte {
@@ -60,6 +71,12 @@ func (m *Metadata) Serialize() []byte {
 
 	writeFloat64(m.MinValue)
 	writeFloat64(m.MaxValue)
+
+	writeUint64(m.PointsNumber)
+	writeUint64(m.RowGroupIndex)
+
+	writeUint64(m.TimestampOffset)
+	writeUint64(m.ValueOffset)
 
 	return allBytes
 }
@@ -98,6 +115,12 @@ func DeserializeMetadata(data []byte) (*Metadata, error) {
 		return nil, err
 	}
 	if m.MaxValue, err = readFloat64(); err != nil {
+		return nil, err
+	}
+	if m.TimestampOffset, err = readUint64(); err != nil {
+		return nil, err
+	}
+	if m.ValueOffset, err = readUint64(); err != nil {
 		return nil, err
 	}
 

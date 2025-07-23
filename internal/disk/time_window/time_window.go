@@ -1,0 +1,76 @@
+package time_window
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time-series-engine/config"
+	"time-series-engine/internal"
+	"time-series-engine/internal/disk/parquet"
+)
+
+type TimeWindow struct {
+	StartTimestamp uint64
+	EndTimestamp   uint64
+	WindowsDir     string
+	Path           string
+	ParquetManager *parquet.Manager
+	Config         *config.TimeWindowConfig
+}
+
+func NewTimeWindow(startTimestamp uint64, windowsDir string,
+	parquetManager *parquet.Manager, c *config.TimeWindowConfig) (*TimeWindow, error) {
+	tw := &TimeWindow{
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   startTimestamp + c.Duration,
+		WindowsDir:     windowsDir,
+		ParquetManager: parquetManager,
+		Config:         c,
+	}
+
+	err := tw.createNewWindowDirectory()
+	if err != nil {
+		return nil, err
+	}
+
+	return tw, nil
+}
+
+func (tw *TimeWindow) Update() error {
+	tw.StartTimestamp += tw.Config.Duration
+	tw.EndTimestamp = tw.StartTimestamp + tw.Config.Duration
+
+	err := tw.ParquetManager.Close()
+	if err != nil {
+		return err
+	}
+
+	err = tw.createNewWindowDirectory()
+	if err != nil {
+		return err
+	}
+
+	tw.ParquetManager.Update(tw.Path)
+	return nil
+}
+
+func (tw *TimeWindow) createNewWindowDirectory() error {
+	newFolderName := fmt.Sprintf("window_%d", tw.StartTimestamp)
+	newPath := filepath.Join(tw.WindowsDir, newFolderName)
+
+	err := os.MkdirAll(newPath, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create new time window directory: %w", err)
+	}
+
+	tw.Path = newPath
+	return nil
+}
+
+func (tw *TimeWindow) FlushAll(series map[string][]*internal.Point) error {
+	return tw.ParquetManager.FlushAll(series)
+}
+
+func (tw *TimeWindow) FlushSeries(timeSeriesHash string, points []*internal.Point) error {
+	return tw.ParquetManager.FlushSeries(timeSeriesHash, points)
+}

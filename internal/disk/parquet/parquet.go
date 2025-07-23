@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"time-series-engine/config"
@@ -11,43 +10,33 @@ import (
 	"time-series-engine/internal/disk/row_group"
 )
 
-type Metadata struct {
-	StartTimestamp uint64
-	EndTimestamp   uint64
-	TimeSeries     *internal.TimeSeries
-}
-
-func NewMetadata(ts *internal.TimeSeries) *Metadata {
-	return &Metadata{
-		StartTimestamp: math.MaxUint64,
-		EndTimestamp:   0,
-		TimeSeries:     ts,
-	}
-}
-
 type Parquet struct {
 	Metadata       *Metadata
 	ActiveRowGroup *row_group.RowGroup
 	Config         *config.ParquetConfig
 	PageManager    *page.Manager
 	DirectoryPath  string
-	PointsCounter  uint64
 	RowGroupIndex  uint64
 }
 
-func NewParquet(ts *internal.TimeSeries, c *config.ParquetConfig, pm *page.Manager, path string) (*Parquet, error) {
+func NewParquet(timeSeriesHash string, c *config.ParquetConfig, pm *page.Manager, dirPath string) (*Parquet, error) {
 	p := &Parquet{
-		Metadata:       NewMetadata(ts),
+		Metadata:       NewMetadata(timeSeriesHash),
 		ActiveRowGroup: nil,
 		Config:         c,
 		PageManager:    pm,
-		PointsCounter:  0,
 		RowGroupIndex:  0,
-		DirectoryPath:  path,
+		DirectoryPath:  dirPath,
 	}
 
 	var err error
-	p.ActiveRowGroup, err = row_group.NewRowGroup(ts, pm, p.createRowGroupDirectoryPath())
+	var path string
+	path, err = p.createRowGroupDirectoryPath()
+	if err != nil {
+		return nil, err
+	}
+
+	p.ActiveRowGroup, err = row_group.NewRowGroup(pm, path, p.RowGroupIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -56,47 +45,96 @@ func NewParquet(ts *internal.TimeSeries, c *config.ParquetConfig, pm *page.Manag
 }
 
 func (p *Parquet) AddPoint(point *internal.Point) error {
-	if point.Timestamp < p.Metadata.StartTimestamp {
-		p.Metadata.StartTimestamp = point.Timestamp
-		p.Metadata.EndTimestamp = point.Timestamp
-	}
+	p.Metadata.Update(point.Timestamp)
 
 	var err error
-	if p.PointsCounter != 0 && p.shouldFlushRowGroup() {
-		p.ActiveRowGroup.Save(p.PageManager)
+	if p.shouldFlushRowGroup() {
+		err = p.ActiveRowGroup.Save(p.PageManager)
+		if err != nil {
+			return err
+		}
 
 		p.RowGroupIndex++
-		p.ActiveRowGroup, err = row_group.NewRowGroup(
-			p.Metadata.TimeSeries, p.PageManager, p.createRowGroupDirectoryPath())
+		var path string
+		path, err = p.createRowGroupDirectoryPath()
+		if err != nil {
+			return err
+		}
+
+		p.ActiveRowGroup, err = row_group.NewRowGroup(p.PageManager, path, p.RowGroupIndex)
 		if err != nil {
 			return err
 		}
 	}
 
-	p.ActiveRowGroup.AddPoint(point)
-	p.Metadata.EndTimestamp = point.Timestamp
-	p.PointsCounter++
+	err = p.ActiveRowGroup.AddPoint(point)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (p *Parquet) Close() {
-	if p.PointsCounter > 0 && p.ActiveRowGroup != nil {
-		p.ActiveRowGroup.Save(p.PageManager)
+func (p *Parquet) Close() error {
+	err := p.ActiveRowGroup.Save(p.PageManager)
+	if err != nil {
+		return err
 	}
+
+	filePathMetadata := filepath.Join(p.DirectoryPath, "metadata.db")
+	err = p.PageManager.WriteStructure(p.Metadata.Serialize(), filePathMetadata, 0)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (p *Parquet) createRowGroupDirectoryPath() string {
-	rgName := fmt.Sprintf("rowgroup%04d.db", p.RowGroupIndex)
+func (p *Parquet) createRowGroupDirectoryPath() (string, error) {
+	rgName := fmt.Sprintf("rowgroup%04d", p.RowGroupIndex)
 	rgPath := filepath.Join(p.DirectoryPath, rgName)
-	err := os.MkdirAll(rgPath, 0644)
+	err := os.MkdirAll(rgPath, 0755)
 	if err != nil {
-		return ""
+		return "", err
 	}
 
-	return rgPath
+	return rgPath, nil
 }
 
 func (p *Parquet) shouldFlushRowGroup() bool {
-	return p.PointsCounter%p.Config.RowGroupSize == 0
+	return p.Metadata.PointsNumber != 0 && p.Metadata.PointsNumber%p.Config.RowGroupSize == 0
+}
+
+func LoadParquet(m *Metadata, c *config.ParquetConfig, pm *page.Manager, path string) (*Parquet, error) {
+	p := &Parquet{
+		Metadata:       m,
+		ActiveRowGroup: nil,
+		Config:         c,
+		PageManager:    pm,
+		DirectoryPath:  path,
+		RowGroupIndex:  0,
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(entries) > 0 {
+		rgPath := filepath.Join(path, entries[len(entries)-1].Name())
+		p.ActiveRowGroup, err = row_group.LoadRowGroup(pm, rgPath)
+		p.RowGroupIndex = uint64(len(entries)) - 1
+	} else {
+		rgPath, err := p.createRowGroupDirectoryPath()
+		if err != nil {
+			return nil, err
+		}
+
+		p.ActiveRowGroup, err = row_group.NewRowGroup(pm, rgPath, p.RowGroupIndex)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return p, nil
 }

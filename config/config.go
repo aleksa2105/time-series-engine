@@ -27,11 +27,16 @@ type WALConfig struct {
 	SegmentSizeInPages uint64 `yaml:"segment_size_in_pages"`
 }
 
+type TimeWindowConfig struct {
+	Duration uint64 `yaml:"duration"`
+}
+
 type Config struct {
-	MemTableConfig `yaml:"memtable"`
-	PageConfig     `yaml:"page"`
-	ParquetConfig  `yaml:"parquet"`
-	WALConfig      `yaml:"wal"`
+	MemTableConfig   `yaml:"memtable"`
+	PageConfig       `yaml:"page"`
+	ParquetConfig    `yaml:"parquet"`
+	TimeWindowConfig `yaml:"time_window"`
+	WALConfig        `yaml:"wal"`
 }
 
 func LoadConfiguration() Config {

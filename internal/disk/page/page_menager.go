@@ -1,7 +1,7 @@
 package page
 
 import (
-	"fmt"
+	"encoding/binary"
 	"os"
 	"time-series-engine/config"
 )
@@ -16,27 +16,166 @@ func NewManager(config config.PageConfig) *Manager {
 	}
 }
 
-func (m *Manager) WritePage(p Page, path string, offset int64) {
-	fmt.Println(fmt.Sprintf("Write page: %s, %d", path, offset))
-	switch p.(type) {
-	case *TimestampPage:
-		tp := p.(*TimestampPage)
-		for _, curr := range tp.Entries {
-			fmt.Println(curr.Value)
-		}
-	case *ValuePage:
-		tp := p.(*ValuePage)
-		for _, curr := range tp.Entries {
-			fmt.Println(curr.Value)
-		}
-	default:
-		fmt.Println("Nepoznat tip")
+func (m *Manager) WritePage(p Page, path string, offset int64) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0644)
+	if err != nil {
+		return err
 	}
+
+	_, err = file.Seek(offset, 0)
+	if err != nil {
+		return err
+	}
+
+	bytes := p.Serialize()
+	_, err = file.Write(bytes)
+	if err != nil {
+		return err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
-func (m *Manager) Read() {}
 
-func (m *Manager) WriteStructure(data []byte, path string, offset int64) {
+func (m *Manager) ReadPage(path string, offset int64) ([]byte, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
 
+	_, err = file.Seek(offset, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	bytes := make([]byte, m.Config.PageSize)
+	_, err = file.Read(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes, nil
+}
+
+func (m *Manager) WriteStructure(data []byte, path string, offset int64) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Seek(offset, 0)
+	if err != nil {
+		return err
+	}
+
+	lengthBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(lengthBytes, uint64(len(data)))
+	_, err = file.Write(lengthBytes)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write(data)
+	if err != nil {
+		return err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *Manager) ReadStructure(path string, offset int64) ([]byte, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = file.Seek(offset, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	lengthBytes := make([]byte, 8)
+	_, err = file.Read(lengthBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	length := binary.BigEndian.Uint64(lengthBytes)
+	bytes := make([]byte, length)
+	_, err = file.Read(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes, nil
+}
+
+func (m *Manager) ReadBytes(path string, offset int64, length int64) ([]byte, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = file.Seek(offset, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	bytes := make([]byte, length)
+	_, err = file.Read(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes, nil
+}
+
+func (m *Manager) WriteBytes(path string, offset int64, bytes []byte) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Seek(offset, 0)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write(bytes)
+	if err != nil {
+		return err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *Manager) CreateFile(filename string) error {
