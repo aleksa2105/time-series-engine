@@ -2,6 +2,7 @@ package page
 
 import (
 	"errors"
+	"math"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
 )
@@ -27,10 +28,9 @@ func (p *ValuePage) Add(e entry.Entry) {
 	if !ok {
 		return
 	}
-	p.Metadata.UpdateMinMaxValue(ve.Value)
+	p.Metadata.UpdateMinMaxValue(math.Float64bits(ve.Value))
 	p.Metadata.Count++
 	p.BitWriter.WriteBits(ve.CompressedData.Value, ve.CompressedData.ValueSize)
-	p.ValueCompressor.Update(ve.Value, ve.CompressedData.Leading, ve.CompressedData.Trailing)
 	p.Padding -= ve.Size()
 }
 
@@ -58,7 +58,7 @@ func DeserializeValuePage(bytes []byte) (*Metadata, []entry.Entry, error) {
 	vd := entry.NewValueDecompressor(r)
 
 	for i := uint64(0); i < md.Count; i++ {
-		entries = append(entries, vd.DecompressNextEntry(i))
+		entries = append(entries, vd.DecompressNextValue(i))
 	}
 
 	return md, entries, nil

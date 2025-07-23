@@ -18,7 +18,7 @@ package entry
 	has changed compared to the previous XOR result.
 	- Represented by the bit pattern '11'.
 	- Followed by:
-		- 5 bits: number of leading zeros,
+		- 6 bits: number of leading zeros,
 		- 6 bits: number of meaningful XOR bits,
 		- XOR bits of specified length.
 
@@ -31,6 +31,8 @@ import (
 	"math/bits"
 	"time-series-engine/internal"
 )
+
+const scaleFactor = 100000
 
 type CompressedData struct {
 	Value     uint64
@@ -65,34 +67,29 @@ func NewValueCompressor() *ValueCompressor {
 	return &ValueCompressor{}
 }
 
-func (vc *ValueCompressor) CompressNextEntry(e Entry, count uint64) *CompressedData {
-	ve, ok := e.(*ValueEntry)
-	if !ok {
-		return nil
-	}
-
+func (vc *ValueCompressor) CompressNextValue(value float64, count uint64) *CompressedData {
 	var size = 0
 	var result uint64 = 0
 
+	scaled := scale(value)
+
 	if count == 0 { // if first value to be written on page
-		return NewCompressedData(ve.Value, 64, 0, 0)
+		vc.Update(scaled, 0, 0)
+		return NewCompressedData(scaled, 64, 0, 0)
 	} else {
-		xor := ve.Value ^ vc.lastValue
+		xor := scaled ^ vc.lastValue
 		leading := bits.LeadingZeros64(xor)
 		trailing := bits.TrailingZeros64(xor)
 		if xor == 0 {
-			result, size = vc.Case1()
+			result, size = 0, 1
 		} else if leading == vc.lastLeading && trailing == vc.lastTrailing {
 			result, size = vc.Case2(xor, leading, trailing)
 		} else {
 			result, size = vc.Case3(xor, leading, trailing)
 		}
+		vc.Update(scaled, leading, trailing)
 		return NewCompressedData(result, size, leading, trailing)
 	}
-}
-
-func (vc *ValueCompressor) Case1() (uint64, int) {
-	return 0, 1
 }
 
 func (vc *ValueCompressor) Case2(xor uint64, leading, trailing int) (uint64, int) {
@@ -110,20 +107,30 @@ func (vc *ValueCompressor) Case3(xor uint64, leading, trailing int) (uint64, int
 	xorLen := 64 - leading - trailing
 
 	// num of leading zeros uses 5 bits
-	leadingShifted := uint64(leading) << 57 // 64-2-5
+	leadingShifted := uint64(leading) << 56 // 64-2-6
 	// num of bits in xor uses 6 bits
-	xorSizeShifted := uint64(xorLen) << 51 // 64-2-5-6
+	xorSizeShifted := uint64(xorLen) << 50 // 64-2-6-6
 
-	xorShifted := (xor >> trailing) << (51 - xorLen)
+	xorShifted := (xor >> trailing) << (50 - xorLen)
 
 	result := mask | leadingShifted | xorSizeShifted | xorShifted
-	return result, xorLen + 13
+	return result, xorLen + 14
 }
 
 func (vc *ValueCompressor) Update(newLastValue uint64, newLastLeading, newLastTrailing int) {
 	vc.lastValue = newLastValue
 	vc.lastLeading = newLastLeading
 	vc.lastTrailing = newLastTrailing
+}
+
+func scale(value float64) uint64 {
+	scaled := math.Trunc(value * scaleFactor)
+	return uint64(scaled)
+}
+
+func downScale(value uint64) float64 {
+	dScaled := float64(value) / float64(scaleFactor)
+	return dScaled
 }
 
 type ValueDecompressor struct {
@@ -139,18 +146,18 @@ func NewValueDecompressor(bitReader *internal.BitReader) *ValueDecompressor {
 	}
 }
 
-func (vd *ValueDecompressor) DecompressNextEntry(count uint64) *ValueEntry {
+func (vd *ValueDecompressor) DecompressNextValue(count uint64) *ValueEntry {
 	if count == 0 {
 		readBits := vd.bitReader.ReadBits(64)
 		vd.lastValue = readBits
 		vd.lastLeading = 0
 		vd.lastTrailing = 0
-		return NewValueEntry(math.Float64frombits(readBits))
+		return NewValueEntry(downScale(readBits))
 	}
 
 	controlBit := vd.bitReader.ReadBits(1)
 	if controlBit == 0 { // Case 1
-		return NewValueEntry(math.Float64frombits(vd.lastValue))
+		return NewValueEntry(downScale(vd.lastValue))
 	}
 	secondBit := vd.bitReader.ReadBits(1)
 	if secondBit == 0 {
@@ -169,11 +176,11 @@ func (vd *ValueDecompressor) Case2() *ValueEntry {
 
 	value := vd.lastValue ^ xorBits
 	vd.lastValue = value
-	return NewValueEntry(math.Float64frombits(value))
+	return NewValueEntry(downScale(value))
 }
 
 func (vd *ValueDecompressor) Case3() *ValueEntry {
-	leading := vd.bitReader.ReadBits(5)
+	leading := vd.bitReader.ReadBits(6)
 	xorLen := vd.bitReader.ReadBits(6)
 	xorBits := vd.bitReader.ReadBits(int(xorLen))
 	trailing := 64 - leading - xorLen
@@ -183,5 +190,5 @@ func (vd *ValueDecompressor) Case3() *ValueEntry {
 	vd.lastValue = value
 	vd.lastLeading = int(leading)
 	vd.lastTrailing = int(trailing)
-	return NewValueEntry(math.Float64frombits(value))
+	return NewValueEntry(downScale(value))
 }

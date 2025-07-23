@@ -15,15 +15,9 @@ func NewBitWriter(bufSize uint64) *BitWriter {
 }
 
 func (w *BitWriter) WriteBits(bits uint64, numBits int) {
-	for i := numBits - 1; i >= 0; i-- {
-		bit := (bits >> i) & 1
-		if bit == 1 {
-			w.curr |= 1 << (7 - w.nBits)
-		}
-		w.nBits++
-		if w.nBits == 8 {
-			w.flush()
-		}
+	for i := 0; i < numBits; i++ {
+		bit := (bits >> (63 - i)) & 1
+		w.WriteBit(uint8(bit))
 	}
 }
 
