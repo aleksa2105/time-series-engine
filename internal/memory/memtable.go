@@ -1,48 +1,116 @@
 package memory
 
 import (
-	"time-series-engine/config"
+	"fmt"
 	"time-series-engine/internal"
 )
 
 type MemTable struct {
-	TimeSeries map[string]*internal.TimeSeries
-	Points     []*internal.Point
-	Size       uint64
+	Data    map[string]*DoublyLinkedList
+	MaxSize uint64
 }
 
-func NewMemTable() *MemTable {
+func NewMemTable(maxSize uint64) *MemTable {
 	return &MemTable{
-		TimeSeries: make(map[string]*internal.TimeSeries),
-		Points:     make([]*internal.Point, 0),
-		Size:       0,
+		Data:    make(map[string]*DoublyLinkedList),
+		MaxSize: maxSize,
 	}
 }
 
-func (mt *MemTable) IsFull(config *config.MemTableConfig) bool {
-	return mt.Size >= config.MaxSize
-}
+/*
+	TODO: ako budemo dozvoljavali upis duplikata ili vracanje blago u proslost
+	TODO: ne toliko da izadjemo iz trenutnog time windowa, onda bi trebalo umjesto
+	TODO: spregnute liste da se koristi neko od stabla (AVL ili RedBlack), to jest sortirani skup
+*/
 
-func (mt *MemTable) Put(point *internal.Point) {
-	// Check if points time series is already in hash map
-	// if it is not, add new value to hash
-	hash := point.TimeSeries.Hash()
-	ts, exists := mt.TimeSeries[hash]
+func (mt *MemTable) WritePointWithFlush(timeSeries internal.TimeSeries, point *internal.Point) []*internal.Point {
+	timeSeriesKey := timeSeries.Hash()
+
+	storage, exists := mt.Data[timeSeriesKey]
 	if !exists {
-		mt.TimeSeries[hash] = point.TimeSeries
-		mt.Size += point.TimeSeries.Size()
-	} else {
-		point.TimeSeries = ts
+		mt.Data[timeSeriesKey] = NewDoublyLinkedList(mt.MaxSize)
+		storage = mt.Data[timeSeriesKey]
 	}
 
-	mt.Points = append(mt.Points, point)
-	mt.Size += 16 // size of one point (timestamp + value)
+	var pointsToFlush []*internal.Point = nil
+	if storage.IsFull() {
+		pointsToFlush = storage.GetSortedPoints()
+
+		storage = NewDoublyLinkedList(mt.MaxSize)
+		storage.Insert(point)
+	} else {
+		storage.Insert(point)
+	}
+
+	return pointsToFlush
 }
 
-func (mt *MemTable) MinTimestamp() uint64 {
-	return mt.Points[0].Timestamp
+func (mt *MemTable) FlushAllTimeSeries() map[string][]*internal.Point {
+	allTimeSeries := make(map[string][]*internal.Point)
+
+	for tsKey, storage := range mt.Data {
+		allTimeSeries[tsKey] = storage.GetSortedPoints()
+	}
+
+	return allTimeSeries
 }
 
-func (mt *MemTable) MaxTimestamp() uint64 {
-	return mt.Points[len(mt.Points)-1].Timestamp
+func (mt *MemTable) DeleteRange(timeSeries internal.TimeSeries, minTimestamp, maxTimestamp uint64) {
+	storage, exists := mt.Data[timeSeries.Hash()]
+	if !exists {
+		return
+	}
+	storage.DeleteRange(minTimestamp, maxTimestamp)
+}
+
+func (mt *MemTable) ListTimeSeries(minTimestamp, maxTimestamp uint64) map[string][]*internal.Point {
+	allTimeSeries := make(map[string][]*internal.Point)
+	for timeSeriesKey, storage := range mt.Data {
+		points := storage.GetPointsInInterval(minTimestamp, maxTimestamp)
+		allTimeSeries[timeSeriesKey] = points
+	}
+	return allTimeSeries
+}
+
+func (mt *MemTable) GetSortedPoints(timeSeries internal.TimeSeries) ([]*internal.Point, error) {
+	timeSeriesKey := timeSeries.Hash()
+	storage, exists := mt.Data[timeSeriesKey]
+	if !exists {
+		return nil, fmt.Errorf("there are no stored points of that time series")
+	}
+	return storage.GetSortedPoints(), nil
+}
+
+func (mt *MemTable) MinTimestamp(timeSeries internal.TimeSeries) (uint64, error) {
+	storage, exits := mt.Data[timeSeries.Hash()]
+	if !exits {
+		return 0, fmt.Errorf("there are no stored points of that time series")
+	}
+
+	if storage.IsEmpty() {
+		return 0, fmt.Errorf("there are no stored points of that time series yet")
+	}
+
+	point, err := storage.FirstPoint()
+	if err != nil {
+		return 0, err
+	}
+	return point.Timestamp, nil
+}
+
+func (mt *MemTable) MaxTimestamp(timeSeries internal.TimeSeries) (uint64, error) {
+	storage, exits := mt.Data[timeSeries.Hash()]
+	if !exits {
+		return 0, fmt.Errorf("there are no stored points of that time series")
+	}
+
+	if storage.IsEmpty() {
+		return 0, fmt.Errorf("there are no stored points of that time series yet")
+	}
+
+	point, err := storage.LastPoint()
+	if err != nil {
+		return 0, err
+	}
+	return point.Timestamp, nil
 }

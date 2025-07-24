@@ -43,7 +43,7 @@ func LoadConfiguration() Config {
 	fmt.Println("Loading configuration...")
 
 	// load system configuration
-	sysConfigFile, err := os.Open("C:\\Users\\Stefan\\Desktop\\time-series-engine\\time-series-engine\\config\\sys_config.yaml")
+	sysConfigFile, err := os.Open("./config/sys_config.yaml")
 	if err != nil {
 		fmt.Println(err)
 	}
