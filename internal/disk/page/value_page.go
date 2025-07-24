@@ -45,7 +45,7 @@ func (p *ValuePage) Serialize() []byte {
 	for _, e := range p.Entries {
 		ve, _ := e.(*entry.ValueEntry)
 		if ve.CompressedData.Compressed == false {
-			w.WriteBits(uint64(3), 2)
+			w.WriteBits(uint64(3)<<62, 2)
 		}
 		w.WriteBits(ve.CompressedData.Value, ve.CompressedData.ValueSize)
 	}
