@@ -59,7 +59,7 @@ func NewBitReader(buf []byte) *BitReader {
 	}
 }
 
-func (r *BitReader) ReadCurrBit() uint8 {
+func (r *BitReader) ReadBit() uint8 {
 	const readHighestBitMask = uint8(1) << 7
 	var currBit = r.curr & readHighestBitMask
 	if currBit != 0 {
@@ -83,7 +83,7 @@ func (r *BitReader) ReadBits(numBits int) uint64 {
 	var result uint64 = 0
 	for i := 0; i < numBits; i++ {
 		result <<= 1
-		result |= uint64(r.ReadCurrBit())
+		result |= uint64(r.ReadBit())
 	}
 	return result
 }
