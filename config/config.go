@@ -13,7 +13,7 @@ type MemTableConfig struct {
 
 type PageConfig struct {
 	PageSize       uint64 `yaml:"max_size"`
-	FilenameLength uint64 `yaml:"file_name_length"`
+	FilenameLength uint64 `yaml:"filename_length"`
 }
 
 type ParquetConfig struct {
@@ -29,6 +29,7 @@ type WALConfig struct {
 
 type TimeWindowConfig struct {
 	Duration uint64 `yaml:"duration"`
+	Start    int64  `yaml:"start"`
 }
 
 type Config struct {
@@ -39,7 +40,7 @@ type Config struct {
 	WALConfig        `yaml:"wal"`
 }
 
-func LoadConfiguration() Config {
+func LoadConfiguration() *Config {
 	fmt.Println("Loading configuration...")
 
 	// load system configuration
@@ -64,7 +65,7 @@ func LoadConfiguration() Config {
 
 	fmt.Println("Configuration loaded successfully.")
 
-	return sysConfig
+	return &sysConfig
 }
 
 func (c *Config) Save(filepath string) {
@@ -95,4 +96,34 @@ func (c *Config) setDefaults() {
 	}
 
 	// TODO dodaj za page i parquet provjeru
+}
+
+func (c *Config) SetUnstagedOffset(offset uint64) error {
+	c.WALConfig.UnstagedOffset = offset
+
+	updatedFile, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("failed to encode updated YAML: %w", err)
+	}
+
+	if err := os.WriteFile("./config/sys_config.yaml", updatedFile, 0644); err != nil {
+		return fmt.Errorf("failed to write updated config file: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Config) SetTimeWindowStart(start int64) error {
+	c.TimeWindowConfig.Start = start
+
+	updatedFile, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("failed to encode updated YAML: %w", err)
+	}
+
+	if err := os.WriteFile("./config/sys_config.yaml", updatedFile, 0644); err != nil {
+		return fmt.Errorf("failed to write updated config file: %w", err)
+	}
+
+	return nil
 }

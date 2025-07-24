@@ -6,8 +6,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"time-series-engine/config"
 	"time-series-engine/internal"
+	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/parquet"
+	"time-series-engine/internal/disk/time_window"
+	"time-series-engine/internal/disk/write_ahead_log"
 	"time-series-engine/internal/memory"
 )
 
@@ -28,19 +33,180 @@ func GetAllAggregationFunctions() []AggregationFunc {
 var reader = bufio.NewReader(os.Stdin)
 
 type Engine struct {
-	configuration config.Config
-	memoryTable   memory.MemTable
-	// TODO: Add WAL
+	configuration  *config.Config
+	pageManager    *page.Manager
+	parquetManager *parquet.Manager
+	memoryTable    *memory.MemTable
+	wal            *write_ahead_log.WriteAheadLog
+	timeWindow     *time_window.TimeWindow
 }
 
-func NewEngine() *Engine {
+func NewEngine() (*Engine, error) {
+	var err error
 	conf := config.LoadConfiguration()
-	memTable := *memory.NewMemTable(conf.MemTableConfig.MaxSize)
+	pm := page.NewManager(conf.PageConfig)
+	wal := write_ahead_log.NewWriteAheadLog(&conf.WALConfig, pm)
+	memTable := memory.NewMemTable(conf.MemTableConfig.MaxSize)
 
-	return &Engine{
+	e := Engine{
 		configuration: conf,
+		pageManager:   pm,
 		memoryTable:   memTable,
+		wal:           wal,
 	}
+
+	e.timeWindow, err = e.checkTimeWindow()
+	if err != nil {
+		return nil, err
+	}
+
+	e.parquetManager = parquet.NewManager(&conf.ParquetConfig, pm, fmt.Sprintf("time_window_%s", conf.TimeWindowConfig.Start))
+
+	err = e.wal.LoadWal()
+	if err != nil {
+		return nil, err
+	}
+
+	err = e.configuration.SetUnstagedOffset(wal.UnstagedOffset())
+	if err != nil {
+		return nil, err
+	}
+
+	err = e.loadMemtables()
+	if err != nil {
+		return nil, err
+	}
+
+	return &e, nil
+}
+
+func (e *Engine) checkTimeWindow() (*time_window.TimeWindow, error) {
+	var tw *time_window.TimeWindow
+	var err error
+	if e.configuration.TimeWindowConfig.Start == 0 || time.Unix(e.configuration.TimeWindowConfig.Start, 0).Before(time.Now()) {
+		newStart := time.Now().Unix()
+		tw, err = time_window.NewTimeWindow(uint64(newStart), fmt.Sprintf("time_window_%s", newStart), e.parquetManager, &e.configuration.TimeWindowConfig)
+		if err != nil {
+			return nil, err
+		}
+		err = e.configuration.SetTimeWindowStart(newStart)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		tw, err = time_window.NewTimeWindow(uint64(e.configuration.TimeWindowConfig.Start), fmt.Sprintf("time_window_%s", e.configuration.TimeWindowConfig.Start), e.parquetManager, &e.configuration.TimeWindowConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return tw, nil
+}
+
+func (e *Engine) loadMemtables() error {
+	offset, segmentIndex, pageIndex := e.prepareLoadMemtables()
+	point := internal.Point{}
+
+	for segmentIndex < e.wal.SegmentsNumber() {
+		file, err := os.Stat(e.wal.SegmentFilename(segmentIndex))
+		if err != nil {
+			return err
+		}
+
+		err = e.reconstructWalSegment(uint64(file.Size()), offset, segmentIndex, pageIndex, &point)
+		if err != nil {
+			return err
+		}
+
+		offset = write_ahead_log.INDEX
+		segmentIndex += 1
+		pageIndex = 0
+	}
+
+	return nil
+}
+
+func (e *Engine) prepareLoadMemtables() (uint64, uint64, uint64) {
+	offset := e.wal.UnstagedOffset()
+	if offset == 0 {
+		offset += write_ahead_log.INDEX
+	}
+
+	pageIndex := (offset - write_ahead_log.INDEX) / e.pageManager.Config.PageSize
+	return offset, 0, pageIndex
+}
+
+func (e *Engine) reconstructWalSegment(
+	fileSize uint64, offset uint64, segmentIndex uint64, pageIndex uint64, p *internal.Point) error {
+
+	currentOffset := write_ahead_log.INDEX + pageIndex*e.pageManager.Config.PageSize
+	for offset < fileSize {
+		pageBytes, err := e.pageManager.ReadPage(
+			e.wal.SegmentFilename(segmentIndex),
+			write_ahead_log.INDEX+int64(pageIndex*e.pageManager.Config.PageSize))
+		if err != nil {
+			return err
+		}
+
+		walPage, err := page.DeserializeWALPage(pageBytes)
+		if err != nil {
+			return err
+		}
+		for _, en := range walPage.Entries {
+			if currentOffset < offset {
+				currentOffset += en.Size()
+				continue
+			}
+			p.Value = en.Value
+			p.Timestamp = en.Timestamp
+			timeSeries := internal.NewTimeSeries(en.MeasurementName, en.Tags)
+
+			_, err := e.putInMemtable(timeSeries, p, e.wal.ActiveSegment(), e.wal.UnstagedOffset())
+			if err != nil {
+				return err
+			}
+
+			entrySize := en.Size()
+			offset += entrySize
+			currentOffset += entrySize
+		}
+
+		pageIndex += 1
+		offset = write_ahead_log.INDEX + pageIndex*e.pageManager.Config.PageSize
+		currentOffset = offset
+	}
+
+	return nil
+}
+
+func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, wallSegment string, wallOffset uint64) (uint64, error) {
+	var deletedSegmentsNumber uint64 = 0
+
+	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p)
+	if flushedPoints != nil {
+		// TODO
+	}
+	return deletedSegmentsNumber, nil
+}
+
+func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
+	walSeg := e.wal.ActiveSegment()
+	walOff := e.wal.ActiveSegmentOffset()
+
+	err := e.wal.Put(ts, p)
+	if err != nil {
+		return err
+	}
+
+	_, err = e.putInMemtable(ts, p, walSeg, walOff)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Engine) List(ts *internal.TimeSeries) *memory.DoublyLinkedList {
+	return e.memoryTable.Data[ts.Hash()]
 }
 
 func (e *Engine) Run() {
@@ -174,9 +340,13 @@ func (e *Engine) Run() {
 
 			fmt.Printf("Measurement name: %v, Tags: %v, Timestamp: %d, Value: %f\n",
 				measurementName, tags, timestamp, value)
-			fmt.Println(internal.NewTimeSeries(measurementName, tags).Hash())
-			// TODO: add into Engine...
-			// point := internal.NewPoint(timestamp, value)
+
+			ts := internal.NewTimeSeries(measurementName, tags)
+			point := internal.NewPoint(timestamp, value)
+			err := e.Put(ts, &point)
+			if err != nil {
+				fmt.Printf("\n[ERROR]: %v\n\n", err)
+			}
 
 		case 2:
 			// Delete Range functionality:
@@ -197,6 +367,10 @@ func (e *Engine) Run() {
 			fmt.Printf("Measurement name: %v, Tags: %v, Min Timestamp: %d, Max Timestamp: %d\n",
 				measurementName, tags, minTimestamp, maxTimestamp)
 			// TODO: modify Engine...
+			ts := internal.NewTimeSeries(measurementName, tags)
+			for _, in := range e.List(ts).GetSortedPoints() {
+				fmt.Println(in)
+			}
 
 		case 4:
 			// Aggregate functionality:

@@ -72,7 +72,7 @@ func (tags Tags) Serialize() []byte {
 	return buffer
 }
 
-func DeserializeTags(data []byte, numTags uint64) (*Tags, int) {
+func DeserializeTags(data []byte, numTags uint64) (Tags, int) {
 	offset := 0
 	tags := NewTags()
 
@@ -95,5 +95,5 @@ func DeserializeTags(data []byte, numTags uint64) (*Tags, int) {
 		})
 	}
 
-	return &tags, offset
+	return tags, offset
 }

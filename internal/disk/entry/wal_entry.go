@@ -3,6 +3,7 @@ package entry
 import (
 	"encoding/binary"
 	"hash/crc32"
+	"io"
 	"math"
 	"time-series-engine/internal"
 )
@@ -20,21 +21,21 @@ type WALEntry struct {
 	MeasurementNameSize uint64
 	MeasurementName     string
 	NumberOfTags        uint64
-	Tags                *internal.Tags
+	Tags                internal.Tags
 	Timestamp           uint64
 	Value               float64
 }
 
-func NewWALEntry(point *internal.Point) *WALEntry {
-	mn := point.TimeSeries.MeasurementName
-	t := point.TimeSeries.Tags
+func NewWALEntry(timeSeries *internal.TimeSeries, point *internal.Point) *WALEntry {
+	mn := timeSeries.MeasurementName
+	t := timeSeries.Tags
 	we := WALEntry{
 		CRC:                 0,
 		Dead:                false,
 		MeasurementNameSize: uint64(len(mn)),
 		MeasurementName:     mn,
 		NumberOfTags:        uint64(t.Len()),
-		Tags:                &t,
+		Tags:                t,
 		Timestamp:           point.Timestamp,
 		Value:               point.Value,
 	}
@@ -46,6 +47,9 @@ func (e *WALEntry) Deserialize(data []byte) error {
 	offset := 0
 
 	e.CRC = binary.BigEndian.Uint32(data[offset:])
+	if e.CRC == 0 {
+		return io.EOF
+	}
 	offset += 4
 
 	e.Dead = data[offset] == 1

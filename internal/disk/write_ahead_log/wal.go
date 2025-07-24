@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time-series-engine/config"
+	"time-series-engine/internal"
+	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
 )
 
@@ -22,7 +24,7 @@ type WriteAheadLog struct {
 }
 
 func NewWriteAheadLog(c *config.WALConfig, pm *page.Manager) *WriteAheadLog {
-	wal := &WriteAheadLog{
+	return &WriteAheadLog{
 		segments:        make([]string, 0),
 		activeSegment:   "",
 		activePageIndex: 0,
@@ -30,8 +32,34 @@ func NewWriteAheadLog(c *config.WALConfig, pm *page.Manager) *WriteAheadLog {
 		pageManager:     pm,
 		config:          c,
 	}
+}
 
-	return wal
+func (wal *WriteAheadLog) Put(ts *internal.TimeSeries, p *internal.Point) error {
+	walEnt := entry.NewWALEntry(ts, p)
+	if walEnt.Size() > wal.activePage.PaddingSize() {
+		err := wal.changePage()
+		if err != nil {
+			return err
+		}
+	}
+	wal.activePage.Add(walEnt)
+	err := wal.writeWalBlock()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (wal *WriteAheadLog) writeWalBlock() error {
+	filename := wal.config.LogsDirPath + "/" + wal.activeSegment
+	offset := INDEX + wal.activePageIndex*wal.pageManager.Config.PageSize
+
+	err := wal.pageManager.WritePage(wal.activePage, filename, int64(offset))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (wal *WriteAheadLog) LoadWal() error {
@@ -92,7 +120,7 @@ func (wal *WriteAheadLog) LoadWal() error {
 	wal.activePage = page.NewWALPage(wal.pageManager.Config.PageSize)
 	activePageBytes, err := wal.pageManager.ReadBytes(activeSegmentFilename, offset, int64(wal.pageManager.Config.PageSize))
 
-	err = wal.activePage.Deserialize(activePageBytes)
+	wal.activePage, err = page.DeserializeWALPage(activePageBytes)
 	if err != nil {
 		return err
 	}
@@ -108,8 +136,7 @@ func (wal *WriteAheadLog) LoadWal() error {
 
 func (wal *WriteAheadLog) createNewSegment() error {
 	segment := fmt.Sprint(wal.LastSegmentIndex() + 1)
-	segment = fmt.Sprintf("wal_%s%s.log",
-		strings.Repeat("0", int(wal.pageManager.Config.FilenameLength)-len(segment)), segment)
+	segment = fmt.Sprintf("wal_%0*s.log", wal.pageManager.Config.FilenameLength, segment)
 
 	filename := wal.config.LogsDirPath + "/" + segment
 	err := wal.pageManager.CreateFile(filename)

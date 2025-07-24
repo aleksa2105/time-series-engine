@@ -3,7 +3,14 @@ memtable:
     max_size: 100
 page:
     max_size: 1000
+    filename_length: 4
 parquet:
+    max_size: 0
     row_group_size: 3
 time_window:
     duration: 1000
+    start: 0
+wal:
+    logs_dir_path: ./internal/disk/write_ahead_log/logs
+    unstaged_offset: 8
+    segment_size_in_pages: 0
