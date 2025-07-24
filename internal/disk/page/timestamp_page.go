@@ -31,7 +31,7 @@ func (p *TimestampPage) Add(e entry.Entry) {
 
 	p.Metadata.UpdateMinMaxValue(tse.Value)
 	p.Metadata.Count++
-	p.Entries = append(p.Entries, e)
+	p.Entries = append(p.Entries, tse)
 	p.Padding -= tse.Size()
 }
 
