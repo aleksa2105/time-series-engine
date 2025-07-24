@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time-series-engine/config"
 	"time-series-engine/internal/disk/chunk"
@@ -11,14 +12,20 @@ import (
 
 func TestValuePage(t *testing.T) {
 
-	const PageSize uint64 = 100
+	const PageSize uint64 = 200
 
-	c := chunk.NewValueChunk(PageSize, "tests/test")
+	c := chunk.NewValueChunk(PageSize, "tests/testValue")
 	pm := page.NewManager(config.PageConfig{PageSize: PageSize})
 
 	numEntries := 30
 	for i := 0; i < numEntries; i++ {
-		c.Add(pm, float64(i)+1)
+		val := float64(1-2*rand.Intn(2)) * float64(i) * float64(PageSize) * rand.Float64()
+
+		fmt.Println(i, val)
+		err := c.Add(pm, val)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 
 	serializedBytes := c.ActivePage.Serialize()
