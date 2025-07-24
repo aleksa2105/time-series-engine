@@ -9,7 +9,7 @@ parquet:
     row_group_size: 3
 time_window:
     duration: 1000
-    start: 0
+    start: 1753396915
 wal:
     logs_dir_path: ./internal/disk/write_ahead_log/logs
     unstaged_offset: 8

@@ -16,17 +16,16 @@ import (
 	"time-series-engine/internal/memory"
 )
 
-type AggregationFunc string
-
+// Aggregation functions:
 const (
-	MIN  AggregationFunc = "Min"
-	MAX  AggregationFunc = "Max"
-	MEAN AggregationFunc = "Mean"
-	AVG  AggregationFunc = "Average"
+	MIN  = "Min"
+	MAX  = "Max"
+	MEAN = "Mean"
+	AVG  = "Average"
 )
 
-func GetAllAggregationFunctions() []AggregationFunc {
-	return []AggregationFunc{MIN, MAX, MEAN, AVG}
+func GetAllAggregationFunctions() []string {
+	return []string{MIN, MAX, MEAN, AVG}
 }
 
 // Reader for user input. I had problems with \n while using fmt.Scanln():
@@ -156,13 +155,21 @@ func (e *Engine) reconstructWalSegment(
 				currentOffset += en.Size()
 				continue
 			}
-			p.Value = en.Value
-			p.Timestamp = en.Timestamp
-			timeSeries := internal.NewTimeSeries(en.MeasurementName, en.Tags)
 
-			_, err := e.putInMemtable(timeSeries, p, e.wal.ActiveSegment(), e.wal.UnstagedOffset())
-			if err != nil {
-				return err
+			timeSeries := internal.NewTimeSeries(en.MeasurementName, en.Tags)
+			if en.Delete {
+				err = e.DeleteRange(timeSeries, en.MinTimestamp, en.MaxTimestamp)
+				if err != nil {
+					return err
+				}
+			} else {
+				p.Value = en.Value
+				p.Timestamp = en.MaxTimestamp
+
+				_, err = e.putInMemtable(timeSeries, p, e.wal.ActiveSegment(), e.wal.UnstagedOffset())
+				if err != nil {
+					return err
+				}
 			}
 
 			entrySize := en.Size()
@@ -183,7 +190,8 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, wallS
 
 	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p)
 	if flushedPoints != nil {
-		// TODO
+		e.memoryTable.StartWALSegment = wallSegment
+		e.memoryTable.StartWALOffset = wallOffset
 	}
 	return deletedSegmentsNumber, nil
 }
@@ -205,8 +213,51 @@ func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 	return nil
 }
 
-func (e *Engine) List(ts *internal.TimeSeries) *memory.DoublyLinkedList {
-	return e.memoryTable.Data[ts.Hash()]
+func (e *Engine) DeleteRange(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
+	err := e.wal.Delete(ts, minTimestamp, maxTimestamp)
+	if err != nil {
+		return err
+	}
+
+	e.memoryTable.DeleteRange(ts, minTimestamp, maxTimestamp)
+
+	// TODO: Delete on disk...
+	return nil
+}
+
+func (e *Engine) List(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
+	points := e.memoryTable.List(ts, minTimestamp, maxTimestamp)
+	fmt.Println(points)
+
+	// TODO: Search the disk...
+	return nil
+}
+
+func (e *Engine) Aggregate(
+	ts *internal.TimeSeries,
+	minTimestamp, maxTimestamp uint64,
+	function string,
+) error {
+	switch function {
+	case MIN:
+		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, true)
+		if !found {
+			fmt.Println("There are no points in given timestamp range")
+			return nil
+		}
+		fmt.Printf("\nMinimum value is %f\n\n", curBest)
+	case MAX:
+		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, false)
+		if !found {
+			fmt.Println("There are no points in given timestamp range")
+			return nil
+		}
+		fmt.Printf("\nMaximum value is %f\n\n", curBest)
+	default:
+		return nil
+	}
+
+	return nil
 }
 
 func (e *Engine) Run() {
@@ -297,7 +348,7 @@ func (e *Engine) Run() {
 			fmt.Printf("\nMaximum timestamp can't be smaller than minimum!\n\n")
 		}
 	}
-	getUserAggregationFunc := func() AggregationFunc {
+	getUserAggregationFunc := func() string {
 		aggFunctions := GetAllAggregationFunctions()
 		maxIndex := uint64(len(aggFunctions))
 		fmt.Printf("Select aggregation function:\n\n")
@@ -338,12 +389,10 @@ func (e *Engine) Run() {
 			timestamp := getUserInteger("Enter point timestamp")
 			value := getUserFloat("Enter point value")
 
-			fmt.Printf("Measurement name: %v, Tags: %v, Timestamp: %d, Value: %f\n",
-				measurementName, tags, timestamp, value)
-
-			ts := internal.NewTimeSeries(measurementName, tags)
-			point := internal.NewPoint(timestamp, value)
-			err := e.Put(ts, &point)
+			err := e.Put(
+				internal.NewTimeSeries(measurementName, tags),
+				internal.NewPoint(timestamp, value),
+			)
 			if err != nil {
 				fmt.Printf("\n[ERROR]: %v\n\n", err)
 			}
@@ -354,9 +403,13 @@ func (e *Engine) Run() {
 			tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
-			fmt.Printf("Measurement name: %v, Tags: %v, Min Timestamp: %d, Max Timestamp: %d\n",
-				measurementName, tags, minTimestamp, maxTimestamp)
-			// TODO: modify Engine...
+			err := e.DeleteRange(
+				internal.NewTimeSeries(measurementName, tags),
+				minTimestamp, maxTimestamp,
+			)
+			if err != nil {
+				fmt.Printf("\n[ERROR]: %v\n\n", err)
+			}
 
 		case 3:
 			// List functionality:
@@ -364,12 +417,12 @@ func (e *Engine) Run() {
 			tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
-			fmt.Printf("Measurement name: %v, Tags: %v, Min Timestamp: %d, Max Timestamp: %d\n",
-				measurementName, tags, minTimestamp, maxTimestamp)
-			// TODO: modify Engine...
-			ts := internal.NewTimeSeries(measurementName, tags)
-			for _, in := range e.List(ts).GetSortedPoints() {
-				fmt.Println(in)
+			err := e.List(
+				internal.NewTimeSeries(measurementName, tags),
+				minTimestamp, maxTimestamp,
+			)
+			if err != nil {
+				fmt.Printf("\n[ERROR]: %v\n\n", err)
 			}
 
 		case 4:
@@ -380,10 +433,15 @@ func (e *Engine) Run() {
 
 			// Getting aggregation function:
 			aggregationFunction := getUserAggregationFunc()
-			fmt.Printf(
-				"Measurement name: %v, Tags: %v, Min Timestamp: %d, Max Timestamp: %d, Function: %s\n",
-				measurementName, tags, minTimestamp, maxTimestamp, aggregationFunction)
-			// TODO: modify Engine...
+
+			err := e.Aggregate(
+				internal.NewTimeSeries(measurementName, tags),
+				minTimestamp, maxTimestamp,
+				aggregationFunction,
+			)
+			if err != nil {
+				fmt.Printf("\n[ERROR]: %v\n\n", err)
+			}
 
 		default:
 			fmt.Printf("\nInvalid choice, please try again!\n\n")

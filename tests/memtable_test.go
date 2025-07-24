@@ -116,7 +116,7 @@ func TestListTimeSeries(t *testing.T) {
 	start := p1.Timestamp
 	end := p2.Timestamp
 
-	seriesMap := mem.ListTimeSeries(start, end)
+	seriesMap := mem.List(start, end)
 	if len(seriesMap) != 2 {
 		t.Errorf("Expected 2 series in range, got %d", len(seriesMap))
 	}

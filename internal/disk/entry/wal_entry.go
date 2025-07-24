@@ -17,26 +17,46 @@ const VALUE = 8
 
 type WALEntry struct {
 	CRC                 uint32
-	Dead                bool
+	Delete              bool
 	MeasurementNameSize uint64
 	MeasurementName     string
 	NumberOfTags        uint64
 	Tags                internal.Tags
-	Timestamp           uint64
+	MinTimestamp        uint64
+	MaxTimestamp        uint64
 	Value               float64
 }
 
-func NewWALEntry(timeSeries *internal.TimeSeries, point *internal.Point) *WALEntry {
+func NewWALDeleteEntry(timeSeries *internal.TimeSeries, minTimestamp, maxTimestamp uint64) *WALEntry {
 	mn := timeSeries.MeasurementName
 	t := timeSeries.Tags
 	we := WALEntry{
 		CRC:                 0,
-		Dead:                false,
+		Delete:              true,
 		MeasurementNameSize: uint64(len(mn)),
 		MeasurementName:     mn,
 		NumberOfTags:        uint64(t.Len()),
 		Tags:                t,
-		Timestamp:           point.Timestamp,
+		MinTimestamp:        minTimestamp,
+		MaxTimestamp:        maxTimestamp,
+		Value:               0.0,
+	}
+	we.calculateCRC()
+	return &we
+}
+
+func NewWALPutEntry(timeSeries *internal.TimeSeries, point *internal.Point) *WALEntry {
+	mn := timeSeries.MeasurementName
+	t := timeSeries.Tags
+	we := WALEntry{
+		CRC:                 0,
+		Delete:              false,
+		MeasurementNameSize: uint64(len(mn)),
+		MeasurementName:     mn,
+		NumberOfTags:        uint64(t.Len()),
+		Tags:                t,
+		MinTimestamp:        point.Timestamp,
+		MaxTimestamp:        point.Timestamp,
 		Value:               point.Value,
 	}
 	we.calculateCRC()
@@ -52,7 +72,7 @@ func (e *WALEntry) Deserialize(data []byte) error {
 	}
 	offset += 4
 
-	e.Dead = data[offset] == 1
+	e.Delete = data[offset] == 1
 	offset++
 
 	e.MeasurementNameSize = binary.BigEndian.Uint64(data[offset:])
@@ -68,7 +88,10 @@ func (e *WALEntry) Deserialize(data []byte) error {
 	e.Tags, tagsSize = internal.DeserializeTags(data[offset:], e.NumberOfTags)
 	offset += tagsSize
 
-	e.Timestamp = binary.BigEndian.Uint64(data[offset:])
+	e.MinTimestamp = binary.BigEndian.Uint64(data[offset:])
+	offset += 8
+
+	e.MaxTimestamp = binary.BigEndian.Uint64(data[offset:])
 	offset += 8
 
 	e.Value = math.Float64frombits(binary.BigEndian.Uint64(data[offset:]))
@@ -85,7 +108,7 @@ func (e *WALEntry) Serialize() []byte {
 	binary.BigEndian.PutUint32(crcBytes, e.CRC)
 	buffer = append(buffer, crcBytes...)
 
-	if e.Dead {
+	if e.Delete {
 		buffer = append(buffer, 1)
 	} else {
 		buffer = append(buffer, 0)
@@ -103,9 +126,13 @@ func (e *WALEntry) Serialize() []byte {
 
 	buffer = append(buffer, e.Tags.Serialize()...)
 
-	timestampBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(timestampBytes, e.Timestamp)
-	buffer = append(buffer, timestampBytes...)
+	minTimestampBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(minTimestampBytes, e.MinTimestamp)
+	buffer = append(buffer, minTimestampBytes...)
+
+	maxTimestampBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(maxTimestampBytes, e.MaxTimestamp)
+	buffer = append(buffer, maxTimestampBytes...)
 
 	valueBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(valueBytes, math.Float64bits(e.Value))
@@ -126,7 +153,7 @@ func (e *WALEntry) Size() uint64 {
 	size += NUMBER_OF_TAGS
 	size += e.Tags.Size()
 
-	size += TIMESTAMP
+	size += 2 * TIMESTAMP
 	size += VALUE
 
 	return size
@@ -136,7 +163,7 @@ func (e *WALEntry) calculateCRC() {
 	allDataBytes := make([]byte, 0)
 
 	var tombstoneByte byte = 0
-	if e.Dead {
+	if e.Delete {
 		tombstoneByte = 1
 	}
 	allDataBytes = append(allDataBytes, tombstoneByte)
@@ -154,9 +181,13 @@ func (e *WALEntry) calculateCRC() {
 	tagBytes := e.Tags.Serialize()
 	allDataBytes = append(allDataBytes, tagBytes...)
 
-	timestampBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(timestampBytes, e.Timestamp)
-	allDataBytes = append(allDataBytes, timestampBytes...)
+	minTimestampBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(minTimestampBytes, e.MinTimestamp)
+	allDataBytes = append(allDataBytes, minTimestampBytes...)
+
+	maxTimestampBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(maxTimestampBytes, e.MaxTimestamp)
+	allDataBytes = append(allDataBytes, maxTimestampBytes...)
 
 	valueBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(valueBytes, math.Float64bits(e.Value))

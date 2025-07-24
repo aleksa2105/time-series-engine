@@ -23,10 +23,9 @@ type DoublyLinkedList struct {
 	Header  *node
 	Trailer *node
 	Size    uint64
-	MaxSize uint64
 }
 
-func NewDoublyLinkedList(maxSize uint64) *DoublyLinkedList {
+func NewDoublyLinkedList() *DoublyLinkedList {
 	header := newNode(nil, nil, nil)
 	trailer := newNode(nil, nil, nil)
 
@@ -37,15 +36,11 @@ func NewDoublyLinkedList(maxSize uint64) *DoublyLinkedList {
 		Header:  header,
 		Trailer: trailer,
 		Size:    0,
-		MaxSize: maxSize,
 	}
 }
 
 func (dll *DoublyLinkedList) IsEmpty() bool {
 	return dll.Size == 0
-}
-func (dll *DoublyLinkedList) IsFull() bool {
-	return dll.Size >= dll.MaxSize
 }
 
 func (dll *DoublyLinkedList) FirstPoint() (*internal.Point, error) {
@@ -70,7 +65,7 @@ func (dll *DoublyLinkedList) Insert(point *internal.Point) {
 
 	dll.Size += 1
 }
-func (dll *DoublyLinkedList) DeleteRange(minTimestamp, maxTimestamp uint64) {
+func (dll *DoublyLinkedList) DeleteRange(minTimestamp, maxTimestamp uint64) uint64 {
 	// Finding node that is at beginning of range [minTimestamp, maxTimestamp]:
 	lowerNode := dll.Header.Next
 	for lowerNode != dll.Trailer {
@@ -82,7 +77,7 @@ func (dll *DoublyLinkedList) DeleteRange(minTimestamp, maxTimestamp uint64) {
 	}
 	// Check if we found any:
 	if lowerNode == dll.Trailer {
-		return
+		return 0
 	}
 
 	// Finding node that is at the end of the range:
@@ -113,6 +108,8 @@ func (dll *DoublyLinkedList) DeleteRange(minTimestamp, maxTimestamp uint64) {
 		before.Next = dll.Trailer
 		dll.Trailer.Prev = before
 	}
+
+	return deleteCount
 }
 func (dll *DoublyLinkedList) GetPointsInInterval(minTimestamp, maxTimestamp uint64) []*internal.Point {
 	points := make([]*internal.Point, 0, dll.Size)

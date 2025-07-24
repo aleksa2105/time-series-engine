@@ -5,8 +5,8 @@ type Point struct {
 	Value     float64
 }
 
-func NewPoint(timestamp uint64, value float64) Point {
-	return Point{
+func NewPoint(timestamp uint64, value float64) *Point {
+	return &Point{
 		Timestamp: timestamp,
 		Value:     value,
 	}

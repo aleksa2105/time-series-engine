@@ -35,7 +35,23 @@ func NewWriteAheadLog(c *config.WALConfig, pm *page.Manager) *WriteAheadLog {
 }
 
 func (wal *WriteAheadLog) Put(ts *internal.TimeSeries, p *internal.Point) error {
-	walEnt := entry.NewWALEntry(ts, p)
+	walEnt := entry.NewWALPutEntry(ts, p)
+	if walEnt.Size() > wal.activePage.PaddingSize() {
+		err := wal.changePage()
+		if err != nil {
+			return err
+		}
+	}
+	wal.activePage.Add(walEnt)
+	err := wal.writeWalBlock()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (wal *WriteAheadLog) Delete(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
+	walEnt := entry.NewWALDeleteEntry(ts, minTimestamp, maxTimestamp)
 	if walEnt.Size() > wal.activePage.PaddingSize() {
 		err := wal.changePage()
 		if err != nil {

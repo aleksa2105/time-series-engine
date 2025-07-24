@@ -6,43 +6,45 @@ import (
 )
 
 type MemTable struct {
-	Data    map[string]*DoublyLinkedList
-	MaxSize uint64
+	Data            map[string]*DoublyLinkedList
+	Count           uint64
+	MaxSize         uint64
+	StartWALSegment string
+	StartWALOffset  uint64
 }
 
 func NewMemTable(maxSize uint64) *MemTable {
 	return &MemTable{
 		Data:    make(map[string]*DoublyLinkedList),
 		MaxSize: maxSize,
+		Count:   0,
 	}
 }
 
-/*
-	TODO: ako budemo dozvoljavali upis duplikata ili vracanje blago u proslost
-	TODO: ne toliko da izadjemo iz trenutnog time windowa, onda bi trebalo umjesto
-	TODO: spregnute liste da se koristi neko od stabla (AVL ili RedBlack), to jest sortirani skup
-*/
-
 func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *internal.Point) []*internal.Point {
-	timeSeriesKey := timeSeries.Hash()
+	timeSeriesKey := timeSeries.Hash
 
 	storage, exists := mt.Data[timeSeriesKey]
 	if !exists {
-		mt.Data[timeSeriesKey] = NewDoublyLinkedList(mt.MaxSize)
+		mt.Data[timeSeriesKey] = NewDoublyLinkedList()
 		storage = mt.Data[timeSeriesKey]
 	}
 
 	var pointsToFlush []*internal.Point = nil
-	if storage.IsFull() {
+	if mt.IsFull() {
 		pointsToFlush = storage.GetSortedPoints()
-
-		storage = NewDoublyLinkedList(mt.MaxSize)
-		storage.Insert(point)
-	} else {
-		storage.Insert(point)
+		storage = NewDoublyLinkedList()
+		mt.Count = 0
 	}
 
+	storage.Insert(point)
+	mt.Count += 1
+
 	return pointsToFlush
+}
+
+func (mt *MemTable) IsFull() bool {
+	return mt.Count == mt.MaxSize
 }
 
 func (mt *MemTable) FlushAllTimeSeries() map[string][]*internal.Point {
@@ -50,21 +52,23 @@ func (mt *MemTable) FlushAllTimeSeries() map[string][]*internal.Point {
 
 	for tsKey, storage := range mt.Data {
 		allTimeSeries[tsKey] = storage.GetSortedPoints()
+		storage = NewDoublyLinkedList()
 	}
+	mt.Count = 0
 
 	return allTimeSeries
 }
 
-func (mt *MemTable) DeleteRange(timeSeries internal.TimeSeries, minTimestamp, maxTimestamp uint64) {
-	storage, exists := mt.Data[timeSeries.Hash()]
+func (mt *MemTable) DeleteRange(timeSeries *internal.TimeSeries, minTimestamp, maxTimestamp uint64) {
+	storage, exists := mt.Data[timeSeries.Hash]
 	if !exists {
 		return
 	}
-	storage.DeleteRange(minTimestamp, maxTimestamp)
+	mt.Count -= storage.DeleteRange(minTimestamp, maxTimestamp)
 }
 
-func (mt *MemTable) ListTimeSeries(timeSeries internal.TimeSeries, minTimestamp, maxTimestamp uint64) []*internal.Point {
-	timeSeriesKey := timeSeries.Hash()
+func (mt *MemTable) List(timeSeries *internal.TimeSeries, minTimestamp, maxTimestamp uint64) []*internal.Point {
+	timeSeriesKey := timeSeries.Hash
 	storage, exists := mt.Data[timeSeriesKey]
 	if !exists {
 		return nil
@@ -72,8 +76,28 @@ func (mt *MemTable) ListTimeSeries(timeSeries internal.TimeSeries, minTimestamp,
 	return storage.GetPointsInInterval(minTimestamp, maxTimestamp)
 }
 
-func (mt *MemTable) GetSortedPoints(timeSeries internal.TimeSeries) ([]*internal.Point, error) {
-	timeSeriesKey := timeSeries.Hash()
+func (mt *MemTable) AggregateMinMax(
+	ts *internal.TimeSeries,
+	minTimestamp, maxTimestamp uint64,
+	isMin bool,
+) (float64, bool) {
+	storage, exists := mt.Data[ts.Hash]
+	if !exists {
+		return 0.0, false
+	}
+	points := storage.GetPointsInInterval(minTimestamp, maxTimestamp)
+	if points == nil {
+		return 0.0, false
+	}
+
+	if isMin {
+		return points[0].Value, true
+	}
+	return points[len(points)-1].Value, true
+}
+
+func (mt *MemTable) GetSortedPoints(timeSeries *internal.TimeSeries) ([]*internal.Point, error) {
+	timeSeriesKey := timeSeries.Hash
 	storage, exists := mt.Data[timeSeriesKey]
 	if !exists {
 		return nil, fmt.Errorf("there are no stored points of that time series")
@@ -81,8 +105,8 @@ func (mt *MemTable) GetSortedPoints(timeSeries internal.TimeSeries) ([]*internal
 	return storage.GetSortedPoints(), nil
 }
 
-func (mt *MemTable) MinTimestamp(timeSeries internal.TimeSeries) (uint64, error) {
-	storage, exits := mt.Data[timeSeries.Hash()]
+func (mt *MemTable) MinTimestamp(timeSeries *internal.TimeSeries) (uint64, error) {
+	storage, exits := mt.Data[timeSeries.Hash]
 	if !exits {
 		return 0, fmt.Errorf("there are no stored points of that time series")
 	}
@@ -98,8 +122,8 @@ func (mt *MemTable) MinTimestamp(timeSeries internal.TimeSeries) (uint64, error)
 	return point.Timestamp, nil
 }
 
-func (mt *MemTable) MaxTimestamp(timeSeries internal.TimeSeries) (uint64, error) {
-	storage, exits := mt.Data[timeSeries.Hash()]
+func (mt *MemTable) MaxTimestamp(timeSeries *internal.TimeSeries) (uint64, error) {
+	storage, exits := mt.Data[timeSeries.Hash]
 	if !exits {
 		return 0, fmt.Errorf("there are no stored points of that time series")
 	}

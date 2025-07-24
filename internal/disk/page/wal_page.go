@@ -2,21 +2,14 @@ package page
 
 import (
 	"io"
-	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
 )
 
 const CRC = 4
 
-type PageKey struct {
-	Filename string
-	Offset   int64
-}
-
 type WALPage struct {
 	Entries     []*entry.WALEntry
 	paddingSize uint64
-	key         PageKey
 }
 
 func (p *WALPage) Add(e entry.Entry) {
@@ -64,22 +57,11 @@ func DeserializeWALPage(data []byte) (*WALPage, error) {
 	return p, nil
 }
 
-func (p *WALPage) Put(timeSeries *internal.TimeSeries, point *internal.Point) {
-	e := entry.NewWALEntry(timeSeries, point)
-	p.Add(e)
-}
-
 func NewWALPage(pageSize uint64) *WALPage {
 	return &WALPage{
 		Entries:     make([]*entry.WALEntry, 0),
 		paddingSize: pageSize,
-		key:         PageKey{},
 	}
-}
-
-func (p *WALPage) SetKey(filename string, offset int64) {
-	p.key.Filename = filename
-	p.key.Offset = offset
 }
 
 func (p *WALPage) PaddingSize() uint64 {
