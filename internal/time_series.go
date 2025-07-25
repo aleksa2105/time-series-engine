@@ -8,16 +8,21 @@ import (
 type TimeSeries struct {
 	MeasurementName string
 	Tags            Tags
+	Hash            string
 }
 
 func NewTimeSeries(measurementName string, tags Tags) *TimeSeries {
-	return &TimeSeries{
+	ts := &TimeSeries{
 		MeasurementName: measurementName,
 		Tags:            tags,
+		Hash:            "",
 	}
+
+	ts.Hash = ts.hash()
+	return ts
 }
 
-func (ts *TimeSeries) Hash() string {
+func (ts *TimeSeries) hash() string {
 	var stringBuilder strings.Builder
 
 	stringBuilder.WriteString(ts.MeasurementName)
