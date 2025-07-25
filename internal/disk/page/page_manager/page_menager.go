@@ -2,6 +2,7 @@ package page_manager
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"time-series-engine/config"
 	"time-series-engine/internal/disk/page"
@@ -29,6 +30,11 @@ func (m *Manager) WritePage(p page.Page, path string, offset int64) error {
 	_, err = file.Seek(offset, 0)
 	if err != nil {
 		return err
+	}
+
+	fmt.Printf("\nFlush: %s, %d\n", path, offset)
+	for _, e := range p.GetEntries() {
+		fmt.Println(e)
 	}
 
 	bytes := p.Serialize()

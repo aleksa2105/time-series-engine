@@ -12,6 +12,18 @@ type WALPage struct {
 	paddingSize uint64
 }
 
+func (p *WALPage) EntryCount() uint64 {
+	return 0
+}
+
+func (p *WALPage) GetEntries() []entry.Entry {
+	return nil
+}
+
+func (p *WALPage) GetMetadata() *Metadata {
+	return nil
+}
+
 func (p *WALPage) Add(e entry.Entry) {
 	p.Entries = append(p.Entries, e.(*entry.WALEntry))
 	p.paddingSize -= e.Size()

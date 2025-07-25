@@ -30,7 +30,7 @@ type WALConfig struct {
 
 type TimeWindowConfig struct {
 	Duration       uint64 `yaml:"duration"`
-	Start          int64  `yaml:"start"`
+	Start          uint64 `yaml:"start"`
 	WindowsDirPath string `yaml:"windows_dir_path"`
 }
 
@@ -115,7 +115,7 @@ func (c *Config) SetUnstagedOffset(offset uint64) error {
 	return nil
 }
 
-func (c *Config) SetTimeWindowStart(start int64) error {
+func (c *Config) SetTimeWindowStart(start uint64) error {
 	c.TimeWindowConfig.Start = start
 
 	updatedFile, err := yaml.Marshal(c)

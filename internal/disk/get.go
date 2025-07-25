@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
-	"time-series-engine/internal/disk/page"
+	page "time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/parquet"
 	"time-series-engine/internal/disk/row_group"
 )
@@ -107,6 +107,10 @@ func GetInParquet(pm *page.Manager, parquetPath string, minTimestamp uint64, max
 	}
 
 	for _, rg := range rowGroups {
+		if !rg.IsDir() {
+			continue
+		}
+
 		rgPath := filepath.Join(parquetPath, rg.Name())
 		metaPath := filepath.Join(rgPath, "metadata.db")
 

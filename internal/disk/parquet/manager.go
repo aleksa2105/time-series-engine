@@ -113,7 +113,7 @@ func (m *Manager) FlushAll(series map[string][]*internal.Point) error {
 func (m *Manager) findParquetDirectory(timeSeriesHash string) (*Parquet, error) {
 	entries, err := os.ReadDir(m.TimeWindowPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read time window directory: %w", err)
+		return nil, fmt.Errorf("failed to read time window directory: %w", m.TimeWindowPath)
 	}
 
 	for _, entry := range entries {

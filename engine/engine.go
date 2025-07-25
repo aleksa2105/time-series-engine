@@ -48,20 +48,20 @@ func NewEngine() (*Engine, error) {
 	pm := page_manager.NewManager(conf.PageConfig)
 	wal := write_ahead_log.NewWriteAheadLog(&conf.WALConfig, pm)
 	memTable := memory.NewMemTable(conf.MemTableConfig.MaxSize)
+	parquetManager := parquet.NewManager(&conf.ParquetConfig, pm, "")
 
 	e := Engine{
-		configuration: conf,
-		pageManager:   pm,
-		memoryTable:   memTable,
-		wal:           wal,
+		configuration:  conf,
+		pageManager:    pm,
+		memoryTable:    memTable,
+		wal:            wal,
+		parquetManager: parquetManager,
 	}
 
 	e.timeWindow, err = e.checkTimeWindow()
 	if err != nil {
 		return nil, err
 	}
-
-	e.parquetManager = parquet.NewManager(&conf.ParquetConfig, pm, fmt.Sprintf("time_window_%d", conf.TimeWindowConfig.Start))
 
 	err = e.wal.LoadWal()
 	if err != nil {
@@ -82,24 +82,24 @@ func NewEngine() (*Engine, error) {
 }
 
 func (e *Engine) checkTimeWindow() (*time_window.TimeWindow, error) {
-	var tw *time_window.TimeWindow
-	var err error
-	if e.configuration.TimeWindowConfig.Start == 0 || time.Unix(e.configuration.TimeWindowConfig.Start, 0).Before(time.Now()) {
-		newStart := time.Now().Unix()
-		tw, err = time_window.NewTimeWindow(uint64(newStart), fmt.Sprintf("time_window_%d", newStart), e.parquetManager, &e.configuration.TimeWindowConfig)
-		if err != nil {
-			return nil, err
-		}
-		err = e.configuration.SetTimeWindowStart(newStart)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		tw, err = time_window.NewTimeWindow(uint64(e.configuration.TimeWindowConfig.Start), fmt.Sprintf("time_window_%s", e.configuration.TimeWindowConfig.Start), e.parquetManager, &e.configuration.TimeWindowConfig)
-		if err != nil {
-			return nil, err
-		}
+	now := uint64(time.Now().Unix())
+	tw, err := time_window.LoadExistingTimeWindow(now, e.configuration.TimeWindowConfig.WindowsDirPath, &e.configuration.TimeWindowConfig, e.parquetManager)
+	if err == nil {
+		return tw, nil
 	}
+
+	// if there is no appropriate window
+	tw, err = time_window.NewTimeWindow(now, e.configuration.TimeWindowConfig.WindowsDirPath, e.parquetManager, &e.configuration.TimeWindowConfig)
+	if err != nil {
+		return nil, err
+	}
+	e.parquetManager.Update(tw.Path)
+
+	err = e.configuration.SetTimeWindowStart(now)
+	if err != nil {
+		return nil, err
+	}
+
 	return tw, nil
 }
 
@@ -195,7 +195,7 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, wallS
 		e.memoryTable.StartWALSegment = wallSegment
 		e.memoryTable.StartWALOffset = wallOffset
 
-		err := e.timeWindow.FlushSeries(ts.Hash, flushedPoints)
+		err := e.timeWindow.FlushAll(flushedPoints)
 		if err != nil {
 			return 0, err
 		}
@@ -336,13 +336,13 @@ func (e *Engine) Run() {
 	}
 	getUserTags := func() internal.Tags {
 		var numberOfTags uint64
-		for {
-			numberOfTags = getUserInteger("Enter number of tags in time series:")
-			if numberOfTags != 0 {
-				break
-			}
-			fmt.Printf("\nEnter a postive integer!\n\n")
-		}
+		//for {
+		//	numberOfTags = getUserInteger("Enter number of tags in time series:")
+		//	if numberOfTags != 0 {
+		//		break
+		//	}
+		//	fmt.Printf("\nEnter a postive integer!\n\n")
+		//}
 		tags := make(internal.Tags, 0)
 		for i := 0; i < int(numberOfTags); i++ {
 			name := getUserString("Enter tag name:")
@@ -398,14 +398,18 @@ func (e *Engine) Run() {
 
 		case 1:
 			// Write Point functionality:
-			measurementName := getUserString("Enter time series measurement name")
+			//measurementName := getUserString("Enter time series measurement name")
 			tags := getUserTags()
-			timestamp := getUserInteger("Enter point timestamp")
+			//timestamp := getUserInteger("Enter point timestamp")
 			value := getUserFloat("Enter point value")
 
+			//err := e.Put(
+			//	internal.NewTimeSeries(measurementName, tags),
+			//	internal.NewPoint(value),
+			//)
 			err := e.Put(
-				internal.NewTimeSeries(measurementName, tags),
-				internal.NewPoint(timestamp, value),
+				internal.NewTimeSeries("temp", tags),
+				internal.NewPoint(value),
 			)
 			if err != nil {
 				fmt.Printf("\n[ERROR]: %v\n\n", err)

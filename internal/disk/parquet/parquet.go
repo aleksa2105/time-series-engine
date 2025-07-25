@@ -41,6 +41,11 @@ func NewParquet(timeSeriesHash string, c *config.ParquetConfig, pm *page_manager
 		return nil, err
 	}
 
+	err = pm.CreateFile(filepath.Join(dirPath, "metadata.db"))
+	if err != nil {
+		return nil, err
+	}
+
 	return p, nil
 }
 
@@ -49,7 +54,7 @@ func (p *Parquet) AddPoint(point *internal.Point) error {
 
 	var err error
 	if p.shouldFlushRowGroup() {
-		err = p.ActiveRowGroup.Save(p.PageManager)
+		err = p.ActiveRowGroup.Save()
 		if err != nil {
 			return err
 		}
@@ -76,7 +81,7 @@ func (p *Parquet) AddPoint(point *internal.Point) error {
 }
 
 func (p *Parquet) Close() error {
-	err := p.ActiveRowGroup.Save(p.PageManager)
+	err := p.ActiveRowGroup.Save()
 	if err != nil {
 		return err
 	}

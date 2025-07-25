@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"time-series-engine/config"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/parquet"
@@ -73,4 +75,45 @@ func (tw *TimeWindow) FlushAll(series map[string][]*internal.Point) error {
 
 func (tw *TimeWindow) FlushSeries(timeSeriesHash string, points []*internal.Point) error {
 	return tw.ParquetManager.FlushSeries(timeSeriesHash, points)
+}
+
+func LoadExistingTimeWindow(currentTime uint64, windowsDir string, conf *config.TimeWindowConfig, parquetManager *parquet.Manager) (*TimeWindow, error) {
+	files, err := os.ReadDir(windowsDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read windows directory: %w", err)
+	}
+
+	re := regexp.MustCompile(`^window_(\d+)-(\d+)$`)
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		match := re.FindStringSubmatch(f.Name())
+		if len(match) != 3 {
+			continue
+		}
+
+		start, err1 := strconv.ParseUint(match[1], 10, 64)
+		end, err2 := strconv.ParseUint(match[2], 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
+		if currentTime >= start && currentTime < end {
+			tw := &TimeWindow{
+				StartTimestamp: start,
+				EndTimestamp:   end,
+				WindowsDir:     windowsDir,
+				Path:           filepath.Join(windowsDir, f.Name()),
+				ParquetManager: parquetManager,
+				Config:         conf,
+			}
+			tw.ParquetManager.Update(tw.Path)
+			return tw, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no time window matches current time")
 }

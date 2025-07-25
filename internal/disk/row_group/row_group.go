@@ -12,6 +12,7 @@ type RowGroup struct {
 	Metadata       *Metadata
 	TimestampChunk *chunk.TimestampChunk
 	ValueChunk     *chunk.ValueChunk
+	DeleteChunk    *chunk.DeleteChunk
 	DirectoryPath  string
 }
 
@@ -20,7 +21,8 @@ func NewRowGroup(pm *page_manager.Manager, path string, rgIndex uint64) (*RowGro
 	filePathMetadata := filepath.Join(path, "metadata.db")
 	filePathTimestamp := filepath.Join(path, "timestamp.db")
 	filePathValue := filepath.Join(path, "value.db")
-	files = append(files, &filePathMetadata, &filePathTimestamp, &filePathValue)
+	filePathDelete := filepath.Join(path, "delete.db")
+	files = append(files, &filePathMetadata, &filePathTimestamp, &filePathValue, &filePathDelete)
 
 	err := createFiles(pm, files)
 	if err != nil {
@@ -32,6 +34,7 @@ func NewRowGroup(pm *page_manager.Manager, path string, rgIndex uint64) (*RowGro
 		Metadata:       NewMetadata(rgIndex),
 		TimestampChunk: chunk.NewTimestampChunk(pm.Config.PageSize, filePathTimestamp),
 		ValueChunk:     chunk.NewValueChunk(pm.Config.PageSize, filePathValue),
+		DeleteChunk:    chunk.NewDeleteChunk(pm.Config.PageSize, filePathDelete),
 		DirectoryPath:  path,
 	}, nil
 }
@@ -47,25 +50,39 @@ func (rg *RowGroup) AddPoint(p *internal.Point) error {
 	if err != nil {
 		return err
 	}
+	err = rg.DeleteChunk.Add(rg.PageManager, false)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (rg *RowGroup) Save(pm *page_manager.Manager) error {
+func (rg *RowGroup) Save() error {
+	rg.Metadata.TimestampOffset = rg.TimestampChunk.CurrentOffset
+	err := rg.TimestampChunk.Save(rg.PageManager)
+	if err != nil {
+		return err
+	}
+
+	rg.Metadata.ValueOffset = rg.ValueChunk.CurrentOffset
+	err = rg.ValueChunk.Save(rg.PageManager)
+	if err != nil {
+		return err
+	}
+
+	rg.Metadata.DeleteOffset = rg.DeleteChunk.CurrentOffset
+	err = rg.DeleteChunk.Save(rg.PageManager)
+	if err != nil {
+		return err
+	}
+
 	filePathMetadata := filepath.Join(rg.DirectoryPath, "metadata.db")
-	err := pm.WriteStructure(rg.Metadata.Serialize(), filePathMetadata, 0)
+	err = rg.PageManager.WriteStructure(rg.Metadata.Serialize(), filePathMetadata, 0)
 	if err != nil {
 		return err
 	}
 
-	err = rg.TimestampChunk.Save(pm)
-	if err != nil {
-		return err
-	}
-
-	err = rg.ValueChunk.Save(pm)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 

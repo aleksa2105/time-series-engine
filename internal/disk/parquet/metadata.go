@@ -79,7 +79,7 @@ func DeserializeParquetMetadata(data []byte) (*Metadata, error) {
 }
 
 func (m *Metadata) Update(timestamp uint64) {
-	if timestamp < m.MaxTimestamp {
+	if timestamp < m.MinTimestamp {
 		m.MinTimestamp = timestamp
 	}
 	m.MaxTimestamp = timestamp

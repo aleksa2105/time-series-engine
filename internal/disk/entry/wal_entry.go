@@ -27,6 +27,10 @@ type WALEntry struct {
 	Value               float64
 }
 
+func (e *WALEntry) GetValue() uint64 {
+	return 0
+}
+
 func NewWALDeleteEntry(timeSeries *internal.TimeSeries, minTimestamp, maxTimestamp uint64) *WALEntry {
 	mn := timeSeries.MeasurementName
 	t := timeSeries.Tags
