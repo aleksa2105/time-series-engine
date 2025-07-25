@@ -1,10 +1,5 @@
 package entry
 
-/*
-	'0' For not deleted
-	'1' For deleted
-*/
-
 const ActiveBit uint8 = 0
 const DeletedBit uint8 = 1
 
@@ -16,6 +11,10 @@ func NewDeleteEntry(deleted bool) *DeleteEntry {
 	return &DeleteEntry{
 		Deleted: deleted,
 	}
+}
+
+func (de *DeleteEntry) Delete() {
+	de.Deleted = true
 }
 
 func (de *DeleteEntry) Serialize() []byte {

@@ -13,7 +13,7 @@ func TestBitWriterAndReader(t *testing.T) {
 	w.WriteBits(bitsToWrite, 10)
 
 	// Flush da se sve prebaci u buffer
-	w.flush()
+	w.Flush()
 	buf := w.Bytes()
 
 	// Proveri da buffer nije prazan
@@ -36,7 +36,7 @@ func TestBitWriterAndReader(t *testing.T) {
 func TestSeek(t *testing.T) {
 	w := internal.NewBitWriter(10)
 	w.WriteBits(0b10101100_11100000_00000000_00000000_00000000_00000000_00000000_00000000, 8)
-	w.flush()
+	w.Flush()
 
 	_, err := w.Seek(4, internal.SeekStart)
 	if err != nil {
@@ -60,7 +60,7 @@ func TestSeek(t *testing.T) {
 func TestReaderSeek(t *testing.T) {
 	w := internal.NewBitWriter(10)
 	w.WriteBits(0b10101010_00000000_00000000_00000000_00000000_00000000_00000000_00000000, 8)
-	w.flush()
+	w.Flush()
 	r := internal.NewBitReader(w.Bytes())
 
 	_, err := r.Seek(2, internal.SeekStart)
@@ -94,7 +94,7 @@ func TestWriteAndReadSingleBits(t *testing.T) {
 	w.WriteBit(1)
 	w.WriteBit(1)
 	w.WriteBit(0)
-	w.flush()
+	w.Flush()
 
 	r := internal.NewBitReader(w.Bytes())
 	bits := []uint8{1, 0, 1, 1, 0}
@@ -113,7 +113,7 @@ func TestWriteAndReadSingleBits(t *testing.T) {
 func TestReadPastEOF(t *testing.T) {
 	w := internal.NewBitWriter(10)
 	w.WriteBits(0b10101010_00000000_00000000_00000000_00000000_00000000_00000000_00000000, 8)
-	w.flush()
+	w.Flush()
 
 	r := internal.NewBitReader(w.Bytes())
 
