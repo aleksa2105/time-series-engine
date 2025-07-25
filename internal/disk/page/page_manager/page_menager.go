@@ -1,22 +1,26 @@
-package page
+package page_manager
 
 import (
 	"encoding/binary"
 	"os"
 	"time-series-engine/config"
+	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/memory"
 )
 
 type Manager struct {
-	Config config.PageConfig
+	Config     config.PageConfig
+	bufferPool *memory.BufferPool
 }
 
 func NewManager(config config.PageConfig) *Manager {
 	return &Manager{
-		Config: config,
+		Config:     config,
+		bufferPool: memory.NewBufferPool(config.BufferPoolCapacity),
 	}
 }
 
-func (m *Manager) WritePage(p Page, path string, offset int64) error {
+func (m *Manager) WritePage(p page.Page, path string, offset int64) error {
 	file, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
@@ -42,6 +46,10 @@ func (m *Manager) WritePage(p Page, path string, offset int64) error {
 }
 
 func (m *Manager) ReadPage(path string, offset int64) ([]byte, error) {
+	p := m.bufferPool.Get(path, offset)
+	if p != nil {
+		return p, nil
+	}
 	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, err
@@ -62,6 +70,8 @@ func (m *Manager) ReadPage(path string, offset int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	m.bufferPool.Put(bytes, path, offset)
 
 	return bytes, nil
 }

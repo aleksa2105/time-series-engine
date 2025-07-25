@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time-series-engine/config"
 	"time-series-engine/internal"
-	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/row_group"
 )
 
@@ -14,12 +14,12 @@ type Parquet struct {
 	Metadata       *Metadata
 	ActiveRowGroup *row_group.RowGroup
 	Config         *config.ParquetConfig
-	PageManager    *page.Manager
+	PageManager    *page_manager.Manager
 	DirectoryPath  string
 	RowGroupIndex  uint64
 }
 
-func NewParquet(timeSeriesHash string, c *config.ParquetConfig, pm *page.Manager, dirPath string) (*Parquet, error) {
+func NewParquet(timeSeriesHash string, c *config.ParquetConfig, pm *page_manager.Manager, dirPath string) (*Parquet, error) {
 	p := &Parquet{
 		Metadata:       NewMetadata(timeSeriesHash),
 		ActiveRowGroup: nil,
@@ -105,7 +105,7 @@ func (p *Parquet) shouldFlushRowGroup() bool {
 	return p.Metadata.PointsNumber != 0 && p.Metadata.PointsNumber%p.Config.RowGroupSize == 0
 }
 
-func LoadParquet(m *Metadata, c *config.ParquetConfig, pm *page.Manager, path string) (*Parquet, error) {
+func LoadParquet(m *Metadata, c *config.ParquetConfig, pm *page_manager.Manager, path string) (*Parquet, error) {
 	p := &Parquet{
 		Metadata:       m,
 		ActiveRowGroup: nil,

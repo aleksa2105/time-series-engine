@@ -3,6 +3,7 @@ package chunk
 import (
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 )
 
 type StringChunk struct {
@@ -23,7 +24,7 @@ func NewStringChunk(pageSize uint64, filePath string) *StringChunk {
 	}
 }
 
-func (sc *StringChunk) Add(pm *page.Manager, value string) {
+func (sc *StringChunk) Add(pm *page_manager.Manager, value string) {
 	encodedValue, found := sc.Dictionary.KeyToId[value]
 	if !found {
 		sc.Dictionary.KeyToId[value] = sc.IdGenerator
@@ -53,7 +54,7 @@ func (sc *StringChunk) Add(pm *page.Manager, value string) {
 	sc.ActivePage.Add(newEntry)
 }
 
-func (sc *StringChunk) Save(pm *page.Manager) {
+func (sc *StringChunk) Save(pm *page_manager.Manager) {
 	pm.WritePage(sc.ActivePage, sc.FilePath, int64(sc.CurrentOffset))
 	sc.CurrentOffset += pm.Config.PageSize
 

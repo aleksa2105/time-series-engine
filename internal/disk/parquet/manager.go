@@ -6,19 +6,19 @@ import (
 	"path/filepath"
 	"time-series-engine/config"
 	"time-series-engine/internal"
-	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 )
 
 type Manager struct {
 	ActiveParquetHash string
 	ActiveParquet     *Parquet
 	Config            *config.ParquetConfig
-	PageManager       *page.Manager
+	PageManager       *page_manager.Manager
 	TimeWindowPath    string
 	ParquetIndex      uint64
 }
 
-func NewManager(cfg *config.ParquetConfig, pm *page.Manager, path string) *Manager {
+func NewManager(cfg *config.ParquetConfig, pm *page_manager.Manager, path string) *Manager {
 	return &Manager{
 		ActiveParquetHash: "",
 		ActiveParquet:     nil,
