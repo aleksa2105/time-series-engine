@@ -4,18 +4,18 @@ import (
 	"path/filepath"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/chunk"
-	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 )
 
 type RowGroup struct {
-	PageManager    *page.Manager
+	PageManager    *page_manager.Manager
 	Metadata       *Metadata
 	TimestampChunk *chunk.TimestampChunk
 	ValueChunk     *chunk.ValueChunk
 	DirectoryPath  string
 }
 
-func NewRowGroup(pm *page.Manager, path string, rgIndex uint64) (*RowGroup, error) {
+func NewRowGroup(pm *page_manager.Manager, path string, rgIndex uint64) (*RowGroup, error) {
 	files := make([]*string, 0, 3) // metadata + timestamp + value + tags
 	filePathMetadata := filepath.Join(path, "metadata.db")
 	filePathTimestamp := filepath.Join(path, "timestamp.db")
@@ -50,29 +50,26 @@ func (rg *RowGroup) AddPoint(p *internal.Point) error {
 	return nil
 }
 
-func (rg *RowGroup) Save(pm *page.Manager) error {
-	offset, err := rg.TimestampChunk.Save(pm)
-	rg.Metadata.TimestampOffset = offset
-	if err != nil {
-		return err
-	}
-
-	offset, err = rg.ValueChunk.Save(pm)
-	rg.Metadata.ValueOffset = offset
-	if err != nil {
-		return err
-	}
-
+func (rg *RowGroup) Save(pm *page_manager.Manager) error {
 	filePathMetadata := filepath.Join(rg.DirectoryPath, "metadata.db")
-	err = pm.WriteStructure(rg.Metadata.Serialize(), filePathMetadata, 0)
+	err := pm.WriteStructure(rg.Metadata.Serialize(), filePathMetadata, 0)
 	if err != nil {
 		return err
 	}
-	
+
+	err = rg.TimestampChunk.Save(pm)
+	if err != nil {
+		return err
+	}
+
+	err = rg.ValueChunk.Save(pm)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func createFiles(pm *page.Manager, files []*string) error {
+func createFiles(pm *page_manager.Manager, files []*string) error {
 	for _, file := range files {
 		err := pm.CreateFile(*file)
 		if err != nil {
@@ -83,7 +80,7 @@ func createFiles(pm *page.Manager, files []*string) error {
 	return nil
 }
 
-func LoadRowGroup(pm *page.Manager, path string) (*RowGroup, error) {
+func LoadRowGroup(pm *page_manager.Manager, path string) (*RowGroup, error) {
 	metaPath := filepath.Join(path, "metadata.db")
 	timestampPath := filepath.Join(path, "timestamp.db")
 	valuePath := filepath.Join(path, "value.db")

@@ -4,6 +4,7 @@ import (
 	"os"
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 )
 
 type DeleteChunk struct {
@@ -20,7 +21,7 @@ func NewDeleteChunk(pageSize uint64, filePath string) *DeleteChunk {
 	}
 }
 
-func (dc *DeleteChunk) Add(pm *page.Manager, deleted bool) error {
+func (dc *DeleteChunk) Add(pm *page_manager.Manager, deleted bool) error {
 	de := entry.NewDeleteEntry(deleted)
 
 	if de.Size() > dc.ActivePage.Padding {
@@ -36,11 +37,11 @@ func (dc *DeleteChunk) Add(pm *page.Manager, deleted bool) error {
 	return nil
 }
 
-func (dc *DeleteChunk) Save(pm *page.Manager) error {
+func (dc *DeleteChunk) Save(pm *page_manager.Manager) error {
 	return pm.WritePage(dc.ActivePage, dc.FilePath, int64(dc.CurrentOffset))
 }
 
-func (dc *DeleteChunk) Load(pm *page.Manager) error {
+func (dc *DeleteChunk) Load(pm *page_manager.Manager) error {
 	fileInfo, err := os.Stat(dc.FilePath)
 	if err != nil {
 		return err

@@ -12,8 +12,9 @@ type MemTableConfig struct {
 }
 
 type PageConfig struct {
-	PageSize       uint64 `yaml:"max_size"`
-	FilenameLength uint64 `yaml:"filename_length"`
+	PageSize           uint64 `yaml:"max_size"`
+	FilenameLength     uint64 `yaml:"filename_length"`
+	BufferPoolCapacity uint64 `yaml:"buffer_pool_capacity"`
 }
 
 type ParquetConfig struct {

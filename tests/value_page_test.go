@@ -8,6 +8,7 @@ import (
 	"time-series-engine/internal/disk/chunk"
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 )
 
 func TestValuePage(t *testing.T) {
@@ -15,7 +16,7 @@ func TestValuePage(t *testing.T) {
 	const PageSize uint64 = 200
 
 	c := chunk.NewValueChunk(PageSize, "tests/testValue")
-	pm := page.NewManager(config.PageConfig{PageSize: PageSize})
+	pm := page_manager.NewManager(config.PageConfig{PageSize: PageSize})
 
 	numEntries := 30
 	for i := 0; i < numEntries; i++ {

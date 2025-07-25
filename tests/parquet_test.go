@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time-series-engine/config"
 	"time-series-engine/internal"
-	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/parquet"
 )
 
@@ -18,7 +18,7 @@ func TestParquet(t *testing.T) {
 
 	ts := internal.NewTimeSeries("temperature", tags)
 	c := config.LoadConfiguration()
-	pm := page.NewManager(c.PageConfig)
+	pm := page_manager.NewManager(c.PageConfig)
 
 	p, err := parquet.NewParquet(
 		ts, &c.ParquetConfig, pm, "./internal/disk/data/parquet1")

@@ -10,6 +10,7 @@ import (
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 )
 
 const INDEX = 8
@@ -19,11 +20,11 @@ type WriteAheadLog struct {
 	activeSegment   string
 	activePageIndex uint64
 	activePage      *page.WALPage
-	pageManager     *page.Manager
+	pageManager     *page_manager.Manager
 	config          *config.WALConfig
 }
 
-func NewWriteAheadLog(c *config.WALConfig, pm *page.Manager) *WriteAheadLog {
+func NewWriteAheadLog(c *config.WALConfig, pm *page_manager.Manager) *WriteAheadLog {
 	return &WriteAheadLog{
 		segments:        make([]string, 0),
 		activeSegment:   "",

@@ -11,6 +11,7 @@ import (
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk"
 	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/parquet"
 	"time-series-engine/internal/disk/time_window"
 	"time-series-engine/internal/disk/write_ahead_log"
@@ -34,7 +35,7 @@ var reader = bufio.NewReader(os.Stdin)
 
 type Engine struct {
 	configuration  *config.Config
-	pageManager    *page.Manager
+	pageManager    *page_manager.Manager
 	parquetManager *parquet.Manager
 	memoryTable    *memory.MemTable
 	wal            *write_ahead_log.WriteAheadLog
@@ -44,7 +45,7 @@ type Engine struct {
 func NewEngine() (*Engine, error) {
 	var err error
 	conf := config.LoadConfiguration()
-	pm := page.NewManager(conf.PageConfig)
+	pm := page_manager.NewManager(conf.PageConfig)
 	wal := write_ahead_log.NewWriteAheadLog(&conf.WALConfig, pm)
 	memTable := memory.NewMemTable(conf.MemTableConfig.MaxSize)
 
