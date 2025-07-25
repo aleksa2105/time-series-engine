@@ -21,7 +21,7 @@ func NewMemTable(maxSize uint64) *MemTable {
 	}
 }
 
-func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *internal.Point) []*internal.Point {
+func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *internal.Point) map[string][]*internal.Point {
 	timeSeriesKey := timeSeries.Hash
 
 	storage, exists := mt.Data[timeSeriesKey]
@@ -30,17 +30,13 @@ func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *
 		storage = mt.Data[timeSeriesKey]
 	}
 
-	var pointsToFlush []*internal.Point = nil
-	if mt.IsFull() {
-		pointsToFlush = storage.GetSortedPoints()
-		storage = NewDoublyLinkedList()
-		mt.Count = 0
-	}
-
 	storage.Insert(point)
 	mt.Count += 1
 
-	return pointsToFlush
+	if mt.IsFull() {
+		return mt.FlushAllTimeSeries()
+	}
+	return nil
 }
 
 func (mt *MemTable) IsFull() bool {
