@@ -220,7 +220,10 @@ func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 		return err
 	}
 
-	// TODO: obrisati segmente
+	_, err = e.wal.DeleteWalSegments(deleteSegment)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

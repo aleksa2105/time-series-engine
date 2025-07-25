@@ -193,6 +193,22 @@ func (wal *WriteAheadLog) changePage() error {
 	return nil
 }
 
+func (wal *WriteAheadLog) DeleteWalSegments(minSegment string) (uint64, error) {
+	var deleted uint64 = 0
+	for _, segment := range wal.segments {
+		if segment >= minSegment {
+			break
+		}
+		err := wal.pageManager.RemoveFile(wal.config.LogsDirPath + "/" + segment)
+		if err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+
+	return deleted, nil
+}
+
 func (wal *WriteAheadLog) IsFullSegment() bool {
 	return wal.activePageIndex == wal.config.SegmentSizeInPages-1
 }

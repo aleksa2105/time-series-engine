@@ -207,3 +207,12 @@ func (m *Manager) CreateFile(filename string) error {
 
 	return nil
 }
+
+func (m *Manager) RemoveFile(filename string) error {
+	err := os.RemoveAll(filename)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
