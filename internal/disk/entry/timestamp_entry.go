@@ -34,3 +34,7 @@ func DeserializeTimestampEntry(b []byte) (*TimestampEntry, uint64) {
 func (tse *TimestampEntry) Size() uint64 {
 	return uint64(len(tse.CompressedData.Bytes))
 }
+
+func (tse *TimestampEntry) GetValue() uint64 {
+	return tse.Value
+}

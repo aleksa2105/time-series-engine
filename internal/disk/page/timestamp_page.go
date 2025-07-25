@@ -71,3 +71,15 @@ func DeserializeTimestampPage(bytes []byte) (Page, error) {
 
 	return p, nil
 }
+
+func (p *TimestampPage) EntryCount() uint64 {
+	return p.Metadata.Count
+}
+
+func (p *TimestampPage) GetEntries() []entry.Entry {
+	return p.Entries
+}
+
+func (p *TimestampPage) GetMetadata() *Metadata {
+	return p.Metadata
+}

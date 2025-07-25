@@ -31,3 +31,10 @@ func (de *DeleteEntry) Serialize() []byte {
 func (de *DeleteEntry) Size() uint64 {
 	return 1
 }
+
+func (de *DeleteEntry) GetValue() uint64 {
+	if de.Deleted {
+		return uint64(DeletedBit)
+	}
+	return uint64(ActiveBit)
+}

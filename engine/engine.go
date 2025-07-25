@@ -9,6 +9,7 @@ import (
 	"time"
 	"time-series-engine/config"
 	"time-series-engine/internal"
+	"time-series-engine/internal/disk"
 	"time-series-engine/internal/disk/page"
 	"time-series-engine/internal/disk/parquet"
 	"time-series-engine/internal/disk/time_window"
@@ -59,7 +60,7 @@ func NewEngine() (*Engine, error) {
 		return nil, err
 	}
 
-	e.parquetManager = parquet.NewManager(&conf.ParquetConfig, pm, fmt.Sprintf("time_window_%s", conf.TimeWindowConfig.Start))
+	e.parquetManager = parquet.NewManager(&conf.ParquetConfig, pm, fmt.Sprintf("time_window_%d", conf.TimeWindowConfig.Start))
 
 	err = e.wal.LoadWal()
 	if err != nil {
@@ -84,7 +85,7 @@ func (e *Engine) checkTimeWindow() (*time_window.TimeWindow, error) {
 	var err error
 	if e.configuration.TimeWindowConfig.Start == 0 || time.Unix(e.configuration.TimeWindowConfig.Start, 0).Before(time.Now()) {
 		newStart := time.Now().Unix()
-		tw, err = time_window.NewTimeWindow(uint64(newStart), fmt.Sprintf("time_window_%s", newStart), e.parquetManager, &e.configuration.TimeWindowConfig)
+		tw, err = time_window.NewTimeWindow(uint64(newStart), fmt.Sprintf("time_window_%d", newStart), e.parquetManager, &e.configuration.TimeWindowConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -192,6 +193,11 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, wallS
 	if flushedPoints != nil {
 		e.memoryTable.StartWALSegment = wallSegment
 		e.memoryTable.StartWALOffset = wallOffset
+
+		err := e.timeWindow.FlushSeries(ts.Hash, flushedPoints)
+		if err != nil {
+			return 0, err
+		}
 	}
 	return deletedSegmentsNumber, nil
 }
@@ -229,8 +235,15 @@ func (e *Engine) List(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64
 	points := e.memoryTable.List(ts, minTimestamp, maxTimestamp)
 	fmt.Println(points)
 
-	// TODO: Search the disk...
-	return nil
+	err := disk.Get(
+		e.pageManager,
+		e.configuration.TimeWindowConfig.WindowsDirPath,
+		ts,
+		minTimestamp,
+		maxTimestamp,
+	)
+
+	return err
 }
 
 func (e *Engine) Aggregate(

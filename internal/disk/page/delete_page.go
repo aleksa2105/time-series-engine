@@ -81,3 +81,15 @@ func DeserializeDeletePage(bytes []byte) (Page, error) {
 
 	return p, nil
 }
+
+func (p *DeletePage) EntryCount() uint64 {
+	return p.Metadata.Count
+}
+
+func (p *DeletePage) GetEntries() []entry.Entry {
+	return p.Entries
+}
+
+func (p *DeletePage) GetMetadata() *Metadata {
+	return p.Metadata
+}

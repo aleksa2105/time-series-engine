@@ -28,8 +28,9 @@ type WALConfig struct {
 }
 
 type TimeWindowConfig struct {
-	Duration uint64 `yaml:"duration"`
-	Start    int64  `yaml:"start"`
+	Duration       uint64 `yaml:"duration"`
+	Start          int64  `yaml:"start"`
+	WindowsDirPath string `yaml:"windows_dir_path"`
 }
 
 type Config struct {

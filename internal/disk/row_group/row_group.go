@@ -51,21 +51,24 @@ func (rg *RowGroup) AddPoint(p *internal.Point) error {
 }
 
 func (rg *RowGroup) Save(pm *page.Manager) error {
+	offset, err := rg.TimestampChunk.Save(pm)
+	rg.Metadata.TimestampOffset = offset
+	if err != nil {
+		return err
+	}
+
+	offset, err = rg.ValueChunk.Save(pm)
+	rg.Metadata.ValueOffset = offset
+	if err != nil {
+		return err
+	}
+
 	filePathMetadata := filepath.Join(rg.DirectoryPath, "metadata.db")
-	err := pm.WriteStructure(rg.Metadata.Serialize(), filePathMetadata, 0)
+	err = pm.WriteStructure(rg.Metadata.Serialize(), filePathMetadata, 0)
 	if err != nil {
 		return err
 	}
-
-	err = rg.TimestampChunk.Save(pm)
-	if err != nil {
-		return err
-	}
-
-	err = rg.ValueChunk.Save(pm)
-	if err != nil {
-		return err
-	}
+	
 	return nil
 }
 

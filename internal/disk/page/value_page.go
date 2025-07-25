@@ -80,3 +80,15 @@ func DeserializeValuePage(bytes []byte) (Page, error) {
 
 	return p, nil
 }
+
+func (p *ValuePage) EntryCount() uint64 {
+	return p.Metadata.Count
+}
+
+func (p *ValuePage) GetEntries() []entry.Entry {
+	return p.Entries
+}
+
+func (p *ValuePage) GetMetadata() *Metadata {
+	return p.Metadata
+}

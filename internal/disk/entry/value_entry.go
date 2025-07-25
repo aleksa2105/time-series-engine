@@ -35,3 +35,7 @@ func (ve *ValueEntry) Size() uint64 {
 	}
 	return uint64(ve.CompressedData.ValueSize) + 2
 }
+
+func (ve *ValueEntry) GetValue() uint64 {
+	return math.Float64bits(ve.Value)
+}

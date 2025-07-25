@@ -55,7 +55,7 @@ func (tw *TimeWindow) Update() error {
 }
 
 func (tw *TimeWindow) createNewWindowDirectory() error {
-	newFolderName := fmt.Sprintf("window_%d", tw.StartTimestamp)
+	newFolderName := fmt.Sprintf("window_%d-%d", tw.StartTimestamp, tw.EndTimestamp)
 	newPath := filepath.Join(tw.WindowsDir, newFolderName)
 
 	err := os.MkdirAll(newPath, 0755)

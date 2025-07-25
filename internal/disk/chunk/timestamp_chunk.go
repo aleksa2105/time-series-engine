@@ -1,7 +1,6 @@
 package chunk
 
 import (
-	"os"
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
 )
@@ -42,16 +41,12 @@ func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) error {
 	return nil
 }
 
-func (tsc *TimestampChunk) Save(pm *page.Manager) error {
-	return pm.WritePage(tsc.ActivePage, tsc.FilePath, int64(tsc.CurrentOffset))
+func (tsc *TimestampChunk) Save(pm *page.Manager) (uint64, error) {
+	return tsc.CurrentOffset, pm.WritePage(tsc.ActivePage, tsc.FilePath, int64(tsc.CurrentOffset))
 }
 
 func (tsc *TimestampChunk) Load(pm *page.Manager) error {
-	fileInfo, err := os.Stat(tsc.FilePath)
-	if err != nil {
-		return err
-	}
-	timestampPageBytes, err := pm.ReadPage(tsc.FilePath, fileInfo.Size()-int64(pm.Config.PageSize))
+	timestampPageBytes, err := pm.ReadPage(tsc.FilePath, int64(tsc.CurrentOffset))
 	timestampPage, err := page.DeserializeTimestampPage(timestampPageBytes)
 	if err != nil {
 		return err
