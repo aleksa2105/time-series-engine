@@ -1,4 +1,4 @@
-package memory
+package buffer_pool
 
 import (
 	"fmt"

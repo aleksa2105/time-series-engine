@@ -10,6 +10,7 @@ import (
 	"time-series-engine/config"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk"
+	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
 	"time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/parquet"
@@ -152,21 +153,22 @@ func (e *Engine) reconstructWalSegment(
 		if err != nil {
 			return err
 		}
-		for _, en := range walPage.Entries {
+		for _, en := range walPage.GetEntries() {
+			walEntry := en.(*entry.WALEntry)
 			if currentOffset < offset {
-				currentOffset += en.Size()
+				currentOffset += walEntry.Size()
 				continue
 			}
 
-			timeSeries := internal.NewTimeSeries(en.MeasurementName, en.Tags)
-			if en.Delete {
-				err = e.DeleteRange(timeSeries, en.MinTimestamp, en.MaxTimestamp)
+			timeSeries := internal.NewTimeSeries(walEntry.MeasurementName, walEntry.Tags)
+			if walEntry.Delete {
+				err = e.DeleteRange(timeSeries, walEntry.MinTimestamp, walEntry.MaxTimestamp)
 				if err != nil {
 					return err
 				}
 			} else {
-				p.Value = en.Value
-				p.Timestamp = en.MaxTimestamp
+				p.Value = walEntry.Value
+				p.Timestamp = walEntry.MaxTimestamp
 
 				_, err = e.putInMemtable(timeSeries, p, e.wal.ActiveSegment(), e.wal.UnstagedOffset())
 				if err != nil {
@@ -174,7 +176,7 @@ func (e *Engine) reconstructWalSegment(
 				}
 			}
 
-			entrySize := en.Size()
+			entrySize := walEntry.Size()
 			offset += entrySize
 			currentOffset += entrySize
 		}
@@ -195,9 +197,11 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, wallS
 		e.memoryTable.StartWALSegment = wallSegment
 		e.memoryTable.StartWALOffset = wallOffset
 
-		err := e.timeWindow.FlushSeries(ts.Hash, flushedPoints)
-		if err != nil {
-			return 0, err
+		for _, series := range flushedPoints {
+			err := e.timeWindow.FlushSeries(ts.Hash, series)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 	return deletedSegmentsNumber, nil

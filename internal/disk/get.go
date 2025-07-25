@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
-	"time-series-engine/internal/disk/page"
+	"time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/parquet"
 	"time-series-engine/internal/disk/row_group"
 )
 
-func Get(pm *page.Manager, windowsDir string, ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) error {
+func Get(pm *page_manager.Manager, windowsDir string, ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) error {
 	windows, err := os.ReadDir(windowsDir)
 	if err != nil {
 		return errors.New("[ERROR]: cannot read from time windows directory")
@@ -66,7 +66,7 @@ func MinMaxTimestamp(name string) (uint64, uint64, error) {
 }
 
 func GetParquet(
-	pm *page.Manager,
+	pm *page_manager.Manager,
 	windowsDir string, windowDir string,
 	ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64,
 ) (string, error) {
@@ -100,7 +100,7 @@ func GetParquet(
 	return "", nil
 }
 
-func GetInParquet(pm *page.Manager, parquetPath string, minTimestamp uint64, maxTimestamp uint64) error {
+func GetInParquet(pm *page_manager.Manager, parquetPath string, minTimestamp uint64, maxTimestamp uint64) error {
 	rowGroups, err := os.ReadDir(parquetPath)
 	if err != nil {
 		return fmt.Errorf("[ERROR]: cannot read from parquet directory: %s", parquetPath)
@@ -136,7 +136,7 @@ func DoIntervalsOverlap(min1, max1, min2, max2 uint64) bool {
 }
 
 func GetInRowGroup(
-	pm *page.Manager, rgPath string,
+	pm *page_manager.Manager, rgPath string,
 	minTimestamp uint64, maxTimestamp uint64,
 ) error {
 	tsPath := filepath.Join(rgPath, "timestamp.db")
