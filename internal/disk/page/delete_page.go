@@ -42,14 +42,23 @@ func (p *DeletePage) Serialize() []byte {
 	for _, e := range p.Entries {
 		de, _ := e.(*entry.DeleteEntry)
 		if de.Deleted == true {
-			w.WriteBit(entry.DeletedBit)
+			err := w.WriteBit(entry.DeletedBit)
+			if err != nil {
+				return nil
+			}
 		} else {
-			w.WriteBit(entry.ActiveBit)
+			err := w.WriteBit(entry.ActiveBit)
+			if err != nil {
+				return nil
+			}
 		}
 	}
 
 	for i := uint64(0); i < p.Padding; i++ { // write remaining padding bits
-		w.WriteBit(0)
+		err := w.WriteBit(0)
+		if err != nil {
+			return nil
+		}
 	}
 
 	allBytes = append(allBytes, w.Bytes()...)
@@ -68,7 +77,10 @@ func DeserializeDeletePage(bytes []byte) (Page, error) {
 	r := internal.NewBitReader(bytes[MetadataSize:])
 
 	for i := uint64(0); i < p.Metadata.Count; i++ {
-		bit, _ := r.ReadBit()
+		bit, err := r.ReadBit()
+		if err != nil {
+			return nil, err
+		}
 		e := &entry.DeleteEntry{}
 		if bit == entry.DeletedBit {
 			e.Deleted = true

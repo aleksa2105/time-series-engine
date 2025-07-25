@@ -28,7 +28,7 @@ type WALEntry struct {
 }
 
 func (e *WALEntry) GetValue() uint64 {
-	return 0
+	return math.Float64bits(e.Value)
 }
 
 func NewWALDeleteEntry(timeSeries *internal.TimeSeries, minTimestamp, maxTimestamp uint64) *WALEntry {

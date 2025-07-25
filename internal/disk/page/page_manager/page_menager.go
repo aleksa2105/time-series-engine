@@ -6,18 +6,18 @@ import (
 	"os"
 	"time-series-engine/config"
 	"time-series-engine/internal/disk/page"
-	"time-series-engine/internal/memory"
+	"time-series-engine/internal/memory/buffer_pool"
 )
 
 type Manager struct {
 	Config     config.PageConfig
-	bufferPool *memory.BufferPool
+	bufferPool *buffer_pool.BufferPool
 }
 
 func NewManager(config config.PageConfig) *Manager {
 	return &Manager{
 		Config:     config,
-		bufferPool: memory.NewBufferPool(config.BufferPoolCapacity),
+		bufferPool: buffer_pool.NewBufferPool(config.BufferPoolCapacity),
 	}
 }
 

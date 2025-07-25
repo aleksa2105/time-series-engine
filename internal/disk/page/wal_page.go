@@ -8,16 +8,16 @@ import (
 const CRC = 4
 
 type WALPage struct {
-	Entries     []*entry.WALEntry
+	Entries     []entry.Entry
 	paddingSize uint64
 }
 
 func (p *WALPage) EntryCount() uint64 {
-	return 0
+	return uint64(len(p.Entries))
 }
 
 func (p *WALPage) GetEntries() []entry.Entry {
-	return nil
+	return p.Entries
 }
 
 func (p *WALPage) GetMetadata() *Metadata {
@@ -45,7 +45,7 @@ func (p *WALPage) Serialize() []byte {
 func DeserializeWALPage(data []byte) (*WALPage, error) {
 	var offset uint64 = 0
 	p := &WALPage{}
-	p.Entries = make([]*entry.WALEntry, 0)
+	p.Entries = make([]entry.Entry, 0)
 
 	for offset+CRC < uint64(len(data)) {
 
@@ -71,7 +71,7 @@ func DeserializeWALPage(data []byte) (*WALPage, error) {
 
 func NewWALPage(pageSize uint64) *WALPage {
 	return &WALPage{
-		Entries:     make([]*entry.WALEntry, 0),
+		Entries:     make([]entry.Entry, 0),
 		paddingSize: pageSize,
 	}
 }
