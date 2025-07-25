@@ -47,11 +47,14 @@ func (p *ValuePage) Serialize() []byte {
 		if ve.CompressedData.Compressed == false {
 			w.WriteBits(uint64(3)<<62, 2)
 		}
-		w.WriteBits(ve.CompressedData.Value, ve.CompressedData.ValueSize)
+		w.WriteBits(ve.CompressedData.Value, int64(ve.CompressedData.ValueSize))
 	}
 
 	for i := uint64(0); i < p.Padding; i++ { // write remaining padding bits
-		w.WriteBit(0)
+		err := w.WriteBit(0)
+		if err != nil {
+			return nil
+		}
 	}
 
 	allBytes = append(allBytes, w.Bytes()...)
