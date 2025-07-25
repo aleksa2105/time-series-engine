@@ -63,6 +63,9 @@ func DeserializeTimestampPage(bytes []byte) (Page, error) {
 
 	for i := uint64(0); i < p.Metadata.Count; i++ {
 		tse := tsr.ReconstructNext()
+		if tse == nil {
+			return nil, errors.New("[ERROR]: failed to reconstruct timestamp entry")
+		}
 		p.Entries = append(p.Entries, tse)
 		p.Padding -= tse.Size()
 	}

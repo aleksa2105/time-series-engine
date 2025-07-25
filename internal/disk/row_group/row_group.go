@@ -17,7 +17,7 @@ type RowGroup struct {
 }
 
 func NewRowGroup(pm *page_manager.Manager, path string, rgIndex uint64) (*RowGroup, error) {
-	files := make([]*string, 0, 3) // metadata + timestamp + value + tags
+	files := make([]*string, 0, 4) // metadata + timestamp + value + delete
 	filePathMetadata := filepath.Join(path, "metadata.db")
 	filePathTimestamp := filepath.Join(path, "timestamp.db")
 	filePathValue := filepath.Join(path, "value.db")

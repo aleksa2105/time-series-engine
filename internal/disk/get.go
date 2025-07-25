@@ -147,7 +147,7 @@ func GetInRowGroup(
 	valuePath := filepath.Join(rgPath, "value.db")
 	deletePath := filepath.Join(rgPath, "delete.db")
 
-	tsIter, err := NewIterator(pm, tsPath)
+	tsIter, err := NewIterator(pm, tsPath, Timestamp)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func GetInRowGroup(
 		return err
 	}
 
-	valueIter, err := NewIterator(pm, valuePath)
+	valueIter, err := NewIterator(pm, valuePath, Value)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func GetInRowGroup(
 		return err
 	}
 
-	deleteIter, err := NewIterator(pm, deletePath)
+	deleteIter, err := NewIterator(pm, deletePath, Delete)
 	if err != nil {
 		return err
 	}

@@ -6,20 +6,30 @@ import (
 	"time-series-engine/internal/disk/page/page_manager"
 )
 
+const (
+	Timestamp = 0
+	Value     = 1
+	Delete    = 2
+)
+
+type PageType uint8
+
 type Iterator struct {
 	ActivePage        page.Page
 	CurrentEntryIndex uint64
 	CurrentPageOffset uint64
 	Filename          string
+	Type              PageType
 	PageManager       *page_manager.Manager
 }
 
-func NewIterator(pm *page_manager.Manager, filename string) (*Iterator, error) {
+func NewIterator(pm *page_manager.Manager, filename string, pt PageType) (*Iterator, error) {
 	it := &Iterator{
 		ActivePage:        nil,
 		CurrentEntryIndex: 0,
 		CurrentPageOffset: 0,
 		Filename:          filename,
+		Type:              pt,
 		PageManager:       pm,
 	}
 
@@ -36,7 +46,17 @@ func (it *Iterator) LoadNextPage() error {
 		return err
 	}
 
-	p, err := page.DeserializeValuePage(bytes)
+	var p page.Page
+	switch it.Type {
+	case Timestamp:
+		p, err = page.DeserializeTimestampPage(bytes)
+		break
+	case Value:
+		p, err = page.DeserializeValuePage(bytes)
+		break
+	case Delete:
+		p, err = page.DeserializeDeletePage(bytes)
+	}
 	if err != nil {
 		return err
 	}
@@ -82,7 +102,8 @@ func (it *Iterator) Skip(minTimestamp uint64, maxTimestamp uint64) (uint64, erro
 			return 0, err
 		}
 
-		if e.GetValue() >= minTimestamp {
+		if minTimestamp <= e.GetValue() && e.GetValue() <= maxTimestamp {
+			it.CurrentEntryIndex--
 			break
 		}
 		count++

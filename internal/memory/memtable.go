@@ -46,9 +46,9 @@ func (mt *MemTable) FlushAllTimeSeries() map[string][]*internal.Point {
 
 	for tsHash, storage := range mt.Data {
 		allTimeSeries[tsHash] = storage.GetSortedPoints()
-		storage = NewDoublyLinkedList()
 	}
 	mt.Count = 0
+	mt.Data = make(map[string]*DoublyLinkedList)
 
 	return allTimeSeries
 }

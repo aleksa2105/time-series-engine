@@ -55,11 +55,16 @@ func NewTimestampReconstructor(bytes []byte) *TimestampReconstructor {
 }
 
 func (tsr *TimestampReconstructor) ReconstructNext() *TimestampEntry {
+	if tsr.offset >= uint64(len(tsr.bytes)) {
+		return nil
+	}
+	
 	timestamp, bytesRead := deserializeTimestamp(tsr.bytes[tsr.offset:])
 	if bytesRead <= 0 {
 		return nil
 	}
 	timestamp += tsr.lastValue // add delta
+
 	cd := NewTSCompressedData(tsr.bytes[tsr.offset : tsr.offset+bytesRead])
 	tsr.Update(timestamp, bytesRead)
 	return NewTimestampEntry(timestamp, cd)

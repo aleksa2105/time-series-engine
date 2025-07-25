@@ -189,20 +189,21 @@ func (e *Engine) reconstructWalSegment(
 	return nil
 }
 
-func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, wallSegment string, wallOffset uint64) (uint64, error) {
-	var deletedSegmentsNumber uint64 = 0
+func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSegment string, walOffset uint64) (string, error) {
+	var deleteSegment string
 
 	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p)
 	if flushedPoints != nil {
-		e.memoryTable.StartWALSegment = wallSegment
-		e.memoryTable.StartWALOffset = wallOffset
+		deleteSegment = e.memoryTable.StartWALSegment
+		e.memoryTable.StartWALSegment = walSegment
+		e.memoryTable.StartWALOffset = walOffset
 
 		err := e.timeWindow.FlushAll(flushedPoints)
 		if err != nil {
-			return 0, err
+			return "", err
 		}
 	}
-	return deletedSegmentsNumber, nil
+	return deleteSegment, nil
 }
 
 func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
@@ -214,10 +215,12 @@ func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 		return err
 	}
 
-	_, err = e.putInMemtable(ts, p, walSeg, walOff)
+	deleteSegment, err := e.putInMemtable(ts, p, walSeg, walOff)
 	if err != nil {
 		return err
 	}
+
+	// TODO: obrisati segmente
 
 	return nil
 }
