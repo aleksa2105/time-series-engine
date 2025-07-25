@@ -68,7 +68,7 @@ func DeserializeDeletePage(bytes []byte) (Page, error) {
 	r := internal.NewBitReader(bytes[MetadataSize:])
 
 	for i := uint64(0); i < p.Metadata.Count; i++ {
-		bit := r.ReadBit()
+		bit, _ := r.ReadBit()
 		e := &entry.DeleteEntry{}
 		if bit == entry.DeletedBit {
 			e.Deleted = true

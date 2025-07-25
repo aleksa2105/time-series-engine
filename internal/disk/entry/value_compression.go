@@ -153,7 +153,7 @@ func NewValueReconstructor(bytes []byte) *ValueReconstructor {
 }
 
 func (vr *ValueReconstructor) ReconstructNext() *ValueEntry {
-	controlBits := vr.bitReader.ReadBits(2)
+	controlBits, _ := vr.bitReader.ReadBits(2)
 	if controlBits == 0 { // Case 1
 		cd := NewValCompressedData(0, 2, true)
 		return NewValueEntry(downScale(vr.lastValue), cd)
@@ -172,7 +172,7 @@ func (vr *ValueReconstructor) ReconstructNext() *ValueEntry {
 
 func (vr *ValueReconstructor) Case2() *ValueEntry {
 	xorLen := 64 - vr.lastLeading - vr.lastTrailing
-	xor := vr.bitReader.ReadBits(xorLen)
+	xor, _ := vr.bitReader.ReadBits(xorLen)
 	xor <<= vr.lastTrailing
 
 	value := vr.lastValue ^ xor
@@ -189,9 +189,9 @@ func (vr *ValueReconstructor) Case2() *ValueEntry {
 }
 
 func (vr *ValueReconstructor) Case3() *ValueEntry {
-	leading := vr.bitReader.ReadBits(6)
-	xorLen := vr.bitReader.ReadBits(6)
-	xor := vr.bitReader.ReadBits(int(xorLen))
+	leading, _ := vr.bitReader.ReadBits(6)
+	xorLen, _ := vr.bitReader.ReadBits(6)
+	xor, _ := vr.bitReader.ReadBits(int(xorLen))
 	trailing := 64 - leading - xorLen
 	xor <<= trailing
 
@@ -212,7 +212,7 @@ func (vr *ValueReconstructor) Case3() *ValueEntry {
 }
 
 func (vr *ValueReconstructor) Case4() *ValueEntry {
-	value := vr.bitReader.ReadBits(64)
+	value, _ := vr.bitReader.ReadBits(64)
 	vr.Update(value, 0, 0)
 	cd := NewValCompressedData(value, 64, false)
 
