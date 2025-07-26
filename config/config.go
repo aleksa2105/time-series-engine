@@ -7,8 +7,7 @@ import (
 )
 
 type MemTableConfig struct {
-	NumOfInstances uint64 `yaml:"num_of_instances"`
-	MaxSize        uint64 `yaml:"max_size"`
+	MaxSize uint64 `yaml:"max_size"`
 }
 
 type PageConfig struct {
@@ -88,10 +87,6 @@ func (c *Config) Save(filepath string) {
 func (c *Config) setDefaults() {
 	// Memtable
 	mc := &c.MemTableConfig
-	if mc.NumOfInstances < 1 || mc.NumOfInstances > 4 {
-		mc.NumOfInstances = 3
-		fmt.Printf("Invalid Memtable num_of_instances value. Set to default: %d\n", mc.NumOfInstances)
-	}
 	if mc.MaxSize < 2 || mc.MaxSize > 10000 {
 		mc.MaxSize = 1000
 		fmt.Printf("Invalid Memtable max_size value. Set to default: %d\n", mc.MaxSize)

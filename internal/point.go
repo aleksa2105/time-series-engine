@@ -1,6 +1,9 @@
 package internal
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Point struct {
 	Timestamp uint64
@@ -16,4 +19,8 @@ func NewPoint(value float64) *Point {
 
 func calculateTimestamp() uint64 {
 	return uint64(time.Now().Unix())
+}
+
+func (p *Point) String() string {
+	return fmt.Sprintf("Timestamp: %v, Value: %v \n", p.Timestamp, p.Value)
 }

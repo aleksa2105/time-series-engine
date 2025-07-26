@@ -3,6 +3,7 @@ package engine
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -74,7 +75,7 @@ func NewEngine() (*Engine, error) {
 		return nil, err
 	}
 
-	err = e.loadMemtables()
+	err = e.loadMemtable()
 	if err != nil {
 		return nil, err
 	}
@@ -104,9 +105,11 @@ func (e *Engine) checkTimeWindow() (*time_window.TimeWindow, error) {
 	return tw, nil
 }
 
-func (e *Engine) loadMemtables() error {
-	offset, segmentIndex, pageIndex := e.prepareLoadMemtables()
-	point := internal.Point{}
+func (e *Engine) loadMemtable() error {
+	offset, segmentIndex, pageIndex := e.prepareLoadMemtable()
+
+	e.memoryTable.StartWALOffset = offset
+	e.memoryTable.StartWALSegment = e.wal.FirstSegment()
 
 	for segmentIndex < e.wal.SegmentsNumber() {
 		file, err := os.Stat(e.wal.SegmentFilename(segmentIndex))
@@ -114,7 +117,7 @@ func (e *Engine) loadMemtables() error {
 			return err
 		}
 
-		err = e.reconstructWalSegment(uint64(file.Size()), offset, segmentIndex, pageIndex, &point)
+		err = e.reconstructWalSegment(uint64(file.Size()), offset, segmentIndex, pageIndex)
 		if err != nil {
 			return err
 		}
@@ -127,7 +130,7 @@ func (e *Engine) loadMemtables() error {
 	return nil
 }
 
-func (e *Engine) prepareLoadMemtables() (uint64, uint64, uint64) {
+func (e *Engine) prepareLoadMemtable() (uint64, uint64, uint64) {
 	offset := e.wal.UnstagedOffset()
 	if offset == 0 {
 		offset += write_ahead_log.INDEX
@@ -138,7 +141,7 @@ func (e *Engine) prepareLoadMemtables() (uint64, uint64, uint64) {
 }
 
 func (e *Engine) reconstructWalSegment(
-	fileSize uint64, offset uint64, segmentIndex uint64, pageIndex uint64, p *internal.Point) error {
+	fileSize uint64, offset uint64, segmentIndex uint64, pageIndex uint64) error {
 
 	currentOffset := write_ahead_log.INDEX + pageIndex*e.pageManager.Config.PageSize
 	for offset < fileSize {
@@ -167,10 +170,11 @@ func (e *Engine) reconstructWalSegment(
 					return err
 				}
 			} else {
-				p.Value = walEntry.Value
-				p.Timestamp = walEntry.MaxTimestamp
-
-				_, err = e.putInMemtable(timeSeries, p, e.wal.ActiveSegment(), e.wal.UnstagedOffset())
+				newPoint := &internal.Point{
+					Value:     walEntry.Value,
+					Timestamp: walEntry.MaxTimestamp,
+				}
+				_, err = e.putInMemtable(timeSeries, newPoint, e.wal.ActiveSegment(), e.wal.UnstagedOffset())
 				if err != nil {
 					return err
 				}
@@ -198,7 +202,12 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 		e.memoryTable.StartWALSegment = walSegment
 		e.memoryTable.StartWALOffset = walOffset
 
-		err := e.timeWindow.FlushAll(flushedPoints)
+		err := e.configuration.SetUnstagedOffset(walOffset)
+		if err != nil {
+			return "", err
+		}
+
+		err = e.timeWindow.FlushAll(flushedPoints)
 		if err != nil {
 			return "", err
 		}
@@ -264,17 +273,45 @@ func (e *Engine) Aggregate(
 	case MIN:
 		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, true)
 		if !found {
-			fmt.Println("There are no points in given timestamp range")
-			return nil
+			curBest = math.MaxFloat64
+		}
+		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 0)
+		if err != nil {
+			return err
+		}
+		if diskBest < curBest {
+			curBest = diskBest
 		}
 		fmt.Printf("\nMinimum value is %f\n\n", curBest)
 	case MAX:
 		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, false)
 		if !found {
-			fmt.Println("There are no points in given timestamp range")
-			return nil
+			curBest = 0
+		}
+		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 1)
+		if err != nil {
+			return err
+		}
+		if diskBest > curBest {
+			curBest = diskBest
 		}
 		fmt.Printf("\nMaximum value is %f\n\n", curBest)
+	case AVG:
+		var memorySum float64 = 0
+		var memoryEntriesNum uint64 = 0
+		var totalCount uint64
+		var result float64
+		diskSum, diskEntriesNum, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 2)
+		if err != nil {
+			return err
+		}
+		totalCount = diskEntriesNum + memoryEntriesNum
+		if totalCount == 0 {
+			result = 0
+		} else {
+			result = (memorySum + diskSum) / float64(totalCount)
+		}
+		fmt.Printf("\nAverage value is %f\n\n", result)
 	default:
 		return nil
 	}
@@ -395,7 +432,6 @@ func (e *Engine) Run() {
 		fmt.Println(" 2 - Delete Range")
 		fmt.Println(" 3 - List")
 		fmt.Println(" 4 - Aggregate")
-
 		fmt.Println("\n 0 - Exit")
 
 		choice := getUserInteger("\nEnter your choice")

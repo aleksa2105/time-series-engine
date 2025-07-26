@@ -244,6 +244,10 @@ func (wal *WriteAheadLog) LastSegmentIndex() uint64 {
 	return index
 }
 
+func (wal *WriteAheadLog) FirstSegment() string {
+	return wal.segments[0]
+}
+
 func (wal *WriteAheadLog) SegmentName(index uint64) string {
 	return wal.segments[index]
 }

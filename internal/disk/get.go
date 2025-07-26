@@ -204,3 +204,77 @@ func GetInRowGroup(
 
 	return nil
 }
+
+func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64, pm *page_manager.Manager, windowsDir string, function int) (float64, uint64, error) {
+	var result float64
+	var sumValue float64
+	var pointsNumber uint64
+	switch function {
+	case 0:
+		// min
+		result = float64(^uint64(0))
+		break
+	case 1, 2:
+		// max and avg
+		result = 0
+		break
+	}
+
+	windows, err := os.ReadDir(windowsDir)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	for _, window := range windows {
+		windowName := window.Name()
+
+		parquets, err := os.ReadDir(filepath.Join(windowsDir, windowName))
+		if err != nil {
+			return 0, 0, err
+		}
+
+		for _, p := range parquets {
+			pPath := filepath.Join(windowsDir, windowName, p.Name())
+			metaPath := filepath.Join(pPath, "metadata.db")
+
+			data, err := pm.ReadStructure(metaPath, 0)
+			if err != nil {
+				return 0, 0, err
+			}
+
+			meta, err := parquet.DeserializeParquetMetadata(data)
+			if err != nil {
+				return 0, 0, err
+			}
+
+			if meta.TimeSeriesHash != ts.Hash {
+				continue
+			}
+			if !DoIntervalsOverlap(minTimestamp, maxTimestamp, meta.MinTimestamp, meta.MaxTimestamp) {
+				continue
+			}
+			switch function {
+			case 0:
+				// min
+				if meta.MinValue < result {
+					result = meta.MinValue
+				}
+				break
+			case 1:
+				// max
+				if meta.MaxValue > result {
+					result = meta.MaxValue
+				}
+				break
+			case 2:
+				sumValue += meta.SumValue
+				pointsNumber += meta.PointsNumber
+				break
+			}
+		}
+	}
+	if function == 2 {
+		return sumValue, pointsNumber, nil
+	}
+	return result, 0, nil
+}
