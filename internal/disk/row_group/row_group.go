@@ -101,12 +101,14 @@ func LoadRowGroup(pm *page_manager.Manager, path string) (*RowGroup, error) {
 	metaPath := filepath.Join(path, "metadata.db")
 	timestampPath := filepath.Join(path, "timestamp.db")
 	valuePath := filepath.Join(path, "value.db")
+	deletePath := filepath.Join(path, "delete.db")
 
 	rg := &RowGroup{
 		PageManager:    pm,
 		DirectoryPath:  path,
 		TimestampChunk: nil,
 		ValueChunk:     nil,
+		DeleteChunk:    nil,
 		Metadata:       nil,
 	}
 
@@ -142,8 +144,19 @@ func LoadRowGroup(pm *page_manager.Manager, path string) (*RowGroup, error) {
 		return nil, err
 	}
 
+	deleteChunk := &chunk.DeleteChunk{
+		ActivePage:    nil,
+		FilePath:      deletePath,
+		CurrentOffset: meta.DeleteOffset,
+	}
+	err = deleteChunk.Load(pm)
+	if err != nil {
+		return nil, err
+	}
+
 	rg.TimestampChunk = timestampChunk
 	rg.ValueChunk = valueChunk
+	rg.DeleteChunk = deleteChunk
 
 	return rg, nil
 }

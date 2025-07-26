@@ -117,6 +117,12 @@ func DeserializeMetadata(data []byte) (*Metadata, error) {
 	if m.MaxValue, err = readFloat64(); err != nil {
 		return nil, err
 	}
+	if m.PointsNumber, err = readUint64(); err != nil {
+		return nil, err
+	}
+	if m.RowGroupIndex, err = readUint64(); err != nil {
+		return nil, err
+	}
 	if m.TimestampOffset, err = readUint64(); err != nil {
 		return nil, err
 	}
