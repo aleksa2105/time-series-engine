@@ -35,20 +35,26 @@ func NewWriteAheadLog(c *config.WALConfig, pm *page_manager.Manager) *WriteAhead
 	}
 }
 
-func (wal *WriteAheadLog) Put(ts *internal.TimeSeries, p *internal.Point) error {
+func (wal *WriteAheadLog) Put(ts *internal.TimeSeries, p *internal.Point) (uint64, error) {
+	offsetBefore := wal.ActiveSegmentOffset()
+
 	walEnt := entry.NewWALPutEntry(ts, p)
 	if walEnt.Size() > wal.activePage.PaddingSize() {
 		err := wal.changePage()
 		if err != nil {
-			return err
+			return 0, err
 		}
+		offsetBefore = wal.ActiveSegmentOffset()
 	}
+
 	wal.activePage.Add(walEnt)
 	err := wal.writeWalBlock()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+
+	offsetAfter := offsetBefore + walEnt.Size()
+	return offsetAfter, nil
 }
 
 func (wal *WriteAheadLog) Delete(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {

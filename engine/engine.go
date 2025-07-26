@@ -217,17 +217,12 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 
 func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 	walSeg := e.wal.ActiveSegment()
-	walOff := e.wal.ActiveSegmentOffset()
-
-	err := e.wal.Put(ts, p)
+	offset, err := e.wal.Put(ts, p)
 	if err != nil {
 		return err
 	}
 
-	deleteSegment, err := e.putInMemtable(ts, p, walSeg, walOff)
-	if err != nil {
-		return err
-	}
+	deleteSegment, err := e.putInMemtable(ts, p, walSeg, offset)
 
 	_, err = e.wal.DeleteWalSegments(deleteSegment)
 	if err != nil {

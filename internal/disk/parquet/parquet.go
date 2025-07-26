@@ -59,8 +59,10 @@ func (p *Parquet) AddPoint(point *internal.Point) error {
 			return err
 		}
 
-		p.RowGroupIndex++
 		var path string
+
+		p.RowGroupIndex++
+
 		path, err = p.createRowGroupDirectoryPath()
 		if err != nil {
 			return err
@@ -76,6 +78,7 @@ func (p *Parquet) AddPoint(point *internal.Point) error {
 	if err != nil {
 		return err
 	}
+	p.Metadata.PointsNumber++
 
 	return nil
 }
@@ -97,6 +100,7 @@ func (p *Parquet) Close() error {
 
 func (p *Parquet) createRowGroupDirectoryPath() (string, error) {
 	rgName := fmt.Sprintf("rowgroup%04d", p.RowGroupIndex)
+
 	rgPath := filepath.Join(p.DirectoryPath, rgName)
 	err := os.MkdirAll(rgPath, 0755)
 	if err != nil {
@@ -129,6 +133,9 @@ func LoadParquet(m *Metadata, c *config.ParquetConfig, pm *page_manager.Manager,
 		rgPath := filepath.Join(path, entries[len(entries)-1].Name())
 		p.ActiveRowGroup, err = row_group.LoadRowGroup(pm, rgPath)
 		p.RowGroupIndex = uint64(len(entries)) - 1
+		if p.RowGroupIndex != 0 {
+			p.RowGroupIndex--
+		}
 	} else {
 		rgPath, err := p.createRowGroupDirectoryPath()
 		if err != nil {

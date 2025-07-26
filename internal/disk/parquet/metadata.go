@@ -83,5 +83,4 @@ func (m *Metadata) Update(timestamp uint64) {
 		m.MinTimestamp = timestamp
 	}
 	m.MaxTimestamp = timestamp
-	m.PointsNumber++
 }
