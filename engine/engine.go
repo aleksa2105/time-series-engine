@@ -273,7 +273,7 @@ func (e *Engine) Aggregate(
 ) error {
 	switch function {
 	case MIN:
-		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, true)
+		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, 0)
 		if !found {
 			curBest = math.MaxFloat64
 		}
@@ -288,7 +288,7 @@ func (e *Engine) Aggregate(
 			fmt.Printf("\nMinimum value is %.2f\n\n", curBest)
 		}
 	case MAX:
-		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, false)
+		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, 1)
 		if !found {
 			curBest = -math.MaxFloat64
 		}
@@ -303,8 +303,11 @@ func (e *Engine) Aggregate(
 			fmt.Printf("\nMaximum value is %.2f\n\n", curBest)
 		}
 	case AVG:
-		var memorySum float64 = 0
-		var memoryEntriesNum uint64 = 0
+		memorySum, memoryEntriesNum, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, 2)
+		if !found {
+			memorySum = 0
+			memoryEntriesNum = 0
+		}
 		var totalCount uint64
 		var result float64
 		diskSum, diskEntriesNum, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 2)

@@ -70,24 +70,33 @@ func (mt *MemTable) List(timeSeries *internal.TimeSeries, minTimestamp, maxTimes
 	return storage.GetPointsInInterval(minTimestamp, maxTimestamp)
 }
 
-func (mt *MemTable) AggregateMinMax(
+func (mt *MemTable) Aggregate(
 	ts *internal.TimeSeries,
 	minTimestamp, maxTimestamp uint64,
-	isMin bool,
-) (float64, bool) {
+	function int,
+) (float64, uint64, bool) {
 	storage, exists := mt.Data[ts.Hash]
+	var sum float64
 	if !exists {
-		return 0.0, false
+		return 0.0, 0, false
 	}
 	points := storage.GetPointsInInterval(minTimestamp, maxTimestamp)
 	if len(points) == 0 {
-		return 0.0, false
+		return 0.0, 0, false
 	}
 
-	if isMin {
-		return points[0].Value, true
+	switch function {
+	case 0:
+		return points[0].Value, 0, true
+	case 1:
+		return points[len(points)-1].Value, 0, true
+	case 2:
+		for _, point := range points {
+			sum += point.Value
+		}
+		return sum, uint64(len(points)), true
 	}
-	return points[len(points)-1].Value, true
+	return 0.0, 0, false
 }
 
 func (mt *MemTable) GetSortedPoints(timeSeries *internal.TimeSeries) ([]*internal.Point, error) {
