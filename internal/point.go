@@ -22,5 +22,5 @@ func calculateTimestamp() uint64 {
 }
 
 func (p *Point) String() string {
-	return fmt.Sprintf("Timestamp: %v, Value: %v \n", p.Timestamp, p.Value)
+	return fmt.Sprintf("Timestamp: %v, Value: %v", p.Timestamp, p.Value)
 }

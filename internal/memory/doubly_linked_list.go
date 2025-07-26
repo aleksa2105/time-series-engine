@@ -112,7 +112,7 @@ func (dll *DoublyLinkedList) DeleteRange(minTimestamp, maxTimestamp uint64) uint
 	return deleteCount
 }
 func (dll *DoublyLinkedList) GetPointsInInterval(minTimestamp, maxTimestamp uint64) []*internal.Point {
-	points := make([]*internal.Point, 0, dll.Size)
+	points := make([]*internal.Point, 0)
 
 	curNode := dll.Header.Next
 	for curNode != dll.Trailer {

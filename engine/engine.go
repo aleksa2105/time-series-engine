@@ -250,10 +250,9 @@ func (e *Engine) DeleteRange(ts *internal.TimeSeries, minTimestamp, maxTimestamp
 }
 
 func (e *Engine) List(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
-	points := e.memoryTable.List(ts, minTimestamp, maxTimestamp)
-	fmt.Println(points)
+	pointsMemory := e.memoryTable.List(ts, minTimestamp, maxTimestamp)
 
-	err := disk.Get(
+	pointsDisk, err := disk.Get(
 		e.pageManager,
 		e.configuration.TimeWindowConfig.WindowsDirPath,
 		ts,
@@ -261,6 +260,14 @@ func (e *Engine) List(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64
 		maxTimestamp,
 	)
 
+	fmt.Println()
+	for _, p := range pointsDisk {
+		fmt.Println(p)
+	}
+	for _, p := range pointsMemory {
+		fmt.Println(p)
+	}
+	fmt.Println()
 	return err
 }
 
@@ -282,11 +289,13 @@ func (e *Engine) Aggregate(
 		if diskBest < curBest {
 			curBest = diskBest
 		}
-		fmt.Printf("\nMinimum value is %f\n\n", curBest)
+		if curBest != math.MaxFloat64 {
+			fmt.Printf("\nMinimum value is %.2f\n\n", curBest)
+		}
 	case MAX:
 		curBest, found := e.memoryTable.AggregateMinMax(ts, minTimestamp, maxTimestamp, false)
 		if !found {
-			curBest = 0
+			curBest = -math.MaxFloat64
 		}
 		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 1)
 		if err != nil {
@@ -295,7 +304,9 @@ func (e *Engine) Aggregate(
 		if diskBest > curBest {
 			curBest = diskBest
 		}
-		fmt.Printf("\nMaximum value is %f\n\n", curBest)
+		if curBest != -math.MaxFloat64 {
+			fmt.Printf("\nMaximum value is %.2f\n\n", curBest)
+		}
 	case AVG:
 		var memorySum float64 = 0
 		var memoryEntriesNum uint64 = 0
@@ -311,7 +322,7 @@ func (e *Engine) Aggregate(
 		} else {
 			result = (memorySum + diskSum) / float64(totalCount)
 		}
-		fmt.Printf("\nAverage value is %f\n\n", result)
+		fmt.Printf("\nAverage value is %.2f\n\n", result)
 	default:
 		return nil
 	}
@@ -426,15 +437,13 @@ func (e *Engine) Run() {
 
 	// Main loop:
 	for {
-		fmt.Printf("Choose an option:\n\n")
-
 		fmt.Println(" 1 - Write Point")
 		fmt.Println(" 2 - Delete Range")
 		fmt.Println(" 3 - List")
 		fmt.Println(" 4 - Aggregate")
 		fmt.Println("\n 0 - Exit")
 
-		choice := getUserInteger("\nEnter your choice")
+		choice := getUserInteger("\nEnter your choice: ")
 		switch choice {
 		case 0:
 			fmt.Println("Exiting the program.")
@@ -445,7 +454,7 @@ func (e *Engine) Run() {
 			//measurementName := getUserString("Enter time series measurement name")
 			tags := getUserTags()
 			//timestamp := getUserInteger("Enter point timestamp")
-			value := getUserFloat("Enter point value")
+			value := getUserFloat("Enter point value: ")
 
 			//err := e.Put(
 			//	internal.NewTimeSeries(measurementName, tags),
@@ -461,7 +470,7 @@ func (e *Engine) Run() {
 
 		case 2:
 			// Delete Range functionality:
-			measurementName := getUserString("Enter time series measurement name")
+			measurementName := getUserString("Enter time series measurement name: ")
 			tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
@@ -475,7 +484,7 @@ func (e *Engine) Run() {
 
 		case 3:
 			// List functionality:
-			measurementName := getUserString("Enter time series measurement name")
+			measurementName := getUserString("Enter time series measurement name: ")
 			tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
@@ -489,7 +498,7 @@ func (e *Engine) Run() {
 
 		case 4:
 			// Aggregate functionality:
-			measurementName := getUserString("Enter time series measurement name")
+			measurementName := getUserString("Enter time series measurement name: ")
 			tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 

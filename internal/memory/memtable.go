@@ -80,7 +80,7 @@ func (mt *MemTable) AggregateMinMax(
 		return 0.0, false
 	}
 	points := storage.GetPointsInInterval(minTimestamp, maxTimestamp)
-	if points == nil {
+	if len(points) == 0 {
 		return 0.0, false
 	}
 

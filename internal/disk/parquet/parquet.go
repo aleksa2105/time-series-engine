@@ -50,7 +50,7 @@ func NewParquet(timeSeriesHash string, c *config.ParquetConfig, pm *page_manager
 }
 
 func (p *Parquet) AddPoint(point *internal.Point) error {
-	p.Metadata.Update(point.Timestamp, point.Value)
+	p.Metadata.Update(point.Timestamp)
 
 	var err error
 	if p.shouldFlushRowGroup() {

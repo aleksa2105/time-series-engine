@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,28 +16,30 @@ import (
 	"time-series-engine/internal/disk/row_group"
 )
 
-func Get(pm *page_manager.Manager, windowsDir string, ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) error {
+func Get(pm *page_manager.Manager, windowsDir string, ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) ([]*internal.Point, error) {
 	windows, err := os.ReadDir(windowsDir)
+	result := make([]*internal.Point, 0)
 	if err != nil {
-		return errors.New("[ERROR]: cannot read from time windows directory")
+		return nil, errors.New("[ERROR]: cannot read from time windows directory")
 	}
 
 	for _, window := range windows {
 		start, end, err := MinMaxTimestamp(window.Name())
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if DoIntervalsOverlap(minTimestamp, maxTimestamp, start, end) {
 			p, err := GetParquet(pm, windowsDir, window.Name(), ts, minTimestamp, maxTimestamp)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			if p != "" {
-				err = GetInParquet(pm, p, minTimestamp, maxTimestamp)
+				items, err := GetInParquet(pm, p, minTimestamp, maxTimestamp)
+				result = append(result, items...)
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 			continue
@@ -44,7 +47,7 @@ func Get(pm *page_manager.Manager, windowsDir string, ts *internal.TimeSeries, m
 		break
 	}
 
-	return nil
+	return result, nil
 }
 
 func MinMaxTimestamp(name string) (uint64, uint64, error) {
@@ -100,10 +103,11 @@ func GetParquet(
 	return "", nil
 }
 
-func GetInParquet(pm *page_manager.Manager, parquetPath string, minTimestamp uint64, maxTimestamp uint64) error {
+func GetInParquet(pm *page_manager.Manager, parquetPath string, minTimestamp uint64, maxTimestamp uint64) ([]*internal.Point, error) {
 	rowGroups, err := os.ReadDir(parquetPath)
+	result := make([]*internal.Point, 0)
 	if err != nil {
-		return fmt.Errorf("[ERROR]: cannot read from parquet directory: %s", parquetPath)
+		return nil, fmt.Errorf("[ERROR]: cannot read from parquet directory: %s", parquetPath)
 	}
 
 	for _, rg := range rowGroups {
@@ -116,23 +120,24 @@ func GetInParquet(pm *page_manager.Manager, parquetPath string, minTimestamp uin
 
 		metaBytes, err := pm.ReadStructure(metaPath, 0)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		meta, err := row_group.DeserializeMetadata(metaBytes)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if DoIntervalsOverlap(minTimestamp, maxTimestamp, meta.MinTimestamp, meta.MaxTimestamp) {
-			err = GetInRowGroup(pm, rgPath, minTimestamp, maxTimestamp)
+			items, err := GetInRowGroup(pm, rgPath, minTimestamp, maxTimestamp)
+			result = append(result, items...)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 func DoIntervalsOverlap(min1, max1, min2, max2 uint64) bool {
@@ -142,36 +147,37 @@ func DoIntervalsOverlap(min1, max1, min2, max2 uint64) bool {
 func GetInRowGroup(
 	pm *page_manager.Manager, rgPath string,
 	minTimestamp uint64, maxTimestamp uint64,
-) error {
+) ([]*internal.Point, error) {
+	result := make([]*internal.Point, 0)
 	tsPath := filepath.Join(rgPath, "timestamp.db")
 	valuePath := filepath.Join(rgPath, "value.db")
 	deletePath := filepath.Join(rgPath, "delete.db")
 
 	tsIter, err := NewIterator(pm, tsPath, Timestamp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	skipped, err := tsIter.Skip(minTimestamp, maxTimestamp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	valueIter, err := NewIterator(pm, valuePath, Value)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = valueIter.Advance(skipped)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	deleteIter, err := NewIterator(pm, deletePath, Delete)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = deleteIter.Advance(skipped)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for {
@@ -180,7 +186,7 @@ func GetInRowGroup(
 			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		tsEntry := e.(*entry.TimestampEntry)
 		if tsEntry.GetValue() > maxTimestamp {
@@ -189,35 +195,38 @@ func GetInRowGroup(
 
 		e, err = valueIter.Next()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		valueEntry := e.(*entry.ValueEntry)
 
 		e, err = deleteIter.Next()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		deleteEntry := e.(*entry.DeleteEntry)
 
-		fmt.Println(tsEntry, valueEntry, deleteEntry)
+		if !deleteEntry.Deleted {
+			p := internal.Point{
+				Value:     valueEntry.Value,
+				Timestamp: tsEntry.Value,
+			}
+			result = append(result, &p)
+		}
 	}
 
-	return nil
+	return result, nil
 }
 
 func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64, pm *page_manager.Manager, windowsDir string, function int) (float64, uint64, error) {
 	var result float64
 	var sumValue float64
 	var pointsNumber uint64
+
 	switch function {
 	case 0:
-		// min
-		result = float64(^uint64(0))
-		break
+		result = math.MaxFloat64
 	case 1, 2:
-		// max and avg
-		result = 0
-		break
+		result = -math.MaxFloat64
 	}
 
 	windows, err := os.ReadDir(windowsDir)
@@ -227,7 +236,6 @@ func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64
 
 	for _, window := range windows {
 		windowName := window.Name()
-
 		parquets, err := os.ReadDir(filepath.Join(windowsDir, windowName))
 		if err != nil {
 			return 0, 0, err
@@ -253,28 +261,57 @@ func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64
 			if !DoIntervalsOverlap(minTimestamp, maxTimestamp, meta.MinTimestamp, meta.MaxTimestamp) {
 				continue
 			}
+
+			items, err := GetInParquet(pm, pPath, minTimestamp, maxTimestamp)
+			if err != nil {
+				return 0, 0, err
+			}
+			if len(items) == 0 {
+				continue
+			}
+
+			sum := insertionSort(items)
+
 			switch function {
 			case 0:
-				// min
-				if meta.MinValue < result {
-					result = meta.MinValue
+				first := items[0].Value
+				if first < result {
+					result = first
 				}
-				break
 			case 1:
-				// max
-				if meta.MaxValue > result {
-					result = meta.MaxValue
+				last := items[len(items)-1].Value
+				if last > result {
+					result = last
 				}
-				break
 			case 2:
-				sumValue += meta.SumValue
-				pointsNumber += meta.PointsNumber
-				break
+				pointsNumber += uint64(len(items))
+				sumValue += sum
 			}
 		}
 	}
+
 	if function == 2 {
+		if pointsNumber == 0 {
+			return 0, 0, nil
+		}
 		return sumValue, pointsNumber, nil
 	}
-	return result, 0, nil
+
+	return result, pointsNumber, nil
+}
+
+func insertionSort(array []*internal.Point) float64 {
+	var sum float64
+	for i := 0; i < len(array); i++ {
+		key := array[i]
+		j := i - 1
+
+		for j >= 0 && array[j].Value > key.Value {
+			array[j+1] = array[j]
+			j--
+		}
+		array[j+1] = key
+		sum += key.Value
+	}
+	return sum
 }
