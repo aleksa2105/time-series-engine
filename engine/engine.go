@@ -390,13 +390,13 @@ func (e *Engine) Run() {
 	}
 	getUserTags := func() internal.Tags {
 		var numberOfTags uint64
-		//for {
-		//	numberOfTags = getUserInteger("Enter number of tags in time series:")
-		//	if numberOfTags != 0 {
-		//		break
-		//	}
-		//	fmt.Printf("\nEnter a postive integer!\n\n")
-		//}
+		for {
+			numberOfTags = getUserInteger("Enter number of tags in time series:")
+			if numberOfTags != 0 {
+				break
+			}
+			fmt.Printf("\nEnter a postive integer!\n\n")
+		}
 		tags := make(internal.Tags, 0)
 		for i := 0; i < int(numberOfTags); i++ {
 			name := getUserString("Enter tag name:")
@@ -435,6 +435,7 @@ func (e *Engine) Run() {
 
 	// Main loop:
 	for {
+		fmt.Println()
 		fmt.Println(" 1 - Write Point")
 		fmt.Println(" 2 - Delete Range")
 		fmt.Println(" 3 - List")
@@ -449,19 +450,16 @@ func (e *Engine) Run() {
 
 		case 1:
 			// Write Point functionality:
-			//measurementName := getUserString("Enter time series measurement name")
+			measurementName := getUserString("Enter time series measurement name")
 			tags := getUserTags()
 			//timestamp := getUserInteger("Enter point timestamp")
 			value := getUserFloat("Enter point value: ")
 
-			//err := e.Put(
-			//	internal.NewTimeSeries(measurementName, tags),
-			//	internal.NewPoint(value),
-			//)
 			err := e.Put(
-				internal.NewTimeSeries("temp", tags),
+				internal.NewTimeSeries(measurementName, tags),
 				internal.NewPoint(value),
 			)
+
 			if err != nil {
 				fmt.Printf("\n[ERROR]: %v\n\n", err)
 			}
