@@ -3,8 +3,10 @@ package engine
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"time-series-engine/internal/disk/page"
 	"time-series-engine/internal/disk/page/page_manager"
 	"time-series-engine/internal/disk/parquet"
+	"time-series-engine/internal/disk/row_group"
 	"time-series-engine/internal/disk/time_window"
 	"time-series-engine/internal/disk/write_ahead_log"
 	"time-series-engine/internal/memory"
@@ -165,10 +168,7 @@ func (e *Engine) reconstructWalSegment(
 
 			timeSeries := internal.NewTimeSeries(walEntry.MeasurementName, walEntry.Tags)
 			if walEntry.Delete {
-				err = e.DeleteRange(timeSeries, walEntry.MinTimestamp, walEntry.MaxTimestamp)
-				if err != nil {
-					return err
-				}
+				e.memoryTable.DeleteRange(timeSeries, walEntry.MinTimestamp, walEntry.MaxTimestamp)
 			} else {
 				newPoint := &internal.Point{
 					Value:     walEntry.Value,
@@ -240,7 +240,123 @@ func (e *Engine) DeleteRange(ts *internal.TimeSeries, minTimestamp, maxTimestamp
 
 	e.memoryTable.DeleteRange(ts, minTimestamp, maxTimestamp)
 
-	// TODO: Delete on disk...
+	err = e.DeleteInParquet(ts, minTimestamp, maxTimestamp)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Engine) DeleteInParquet(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) error {
+	windowsDir := e.configuration.WindowsDirPath
+	windows, err := os.ReadDir(windowsDir)
+
+	if err != nil {
+		return err
+	}
+
+	for _, window := range windows {
+		start, end, err := disk.MinMaxTimestamp(window.Name())
+		if err != nil {
+			return err
+		}
+
+		if disk.DoIntervalsOverlap(minTimestamp, maxTimestamp, start, end) {
+			p, err := disk.GetParquet(e.pageManager, windowsDir, window.Name(), ts, minTimestamp, maxTimestamp)
+			if err != nil {
+				return err
+			}
+
+			if p != "" {
+				err = e.DeleteInRowGroup(p, minTimestamp, maxTimestamp)
+				if err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		break
+	}
+	return nil
+}
+
+func (e *Engine) DeleteInRowGroup(parquetPath string, minTimestamp uint64, maxTimestamp uint64) error {
+	rowGroups, err := os.ReadDir(parquetPath)
+	if err != nil {
+		return err
+	}
+
+	for _, rg := range rowGroups {
+		if !rg.IsDir() {
+			continue
+		}
+
+		rgPath := filepath.Join(parquetPath, rg.Name())
+		metaPath := filepath.Join(rgPath, "metadata.db")
+
+		metaBytes, err := e.pageManager.ReadStructure(metaPath, 0)
+		if err != nil {
+			return err
+		}
+
+		meta, err := row_group.DeserializeMetadata(metaBytes)
+		if err != nil {
+			return err
+		}
+
+		if disk.DoIntervalsOverlap(minTimestamp, maxTimestamp, meta.MinTimestamp, meta.MaxTimestamp) {
+			tsPath := filepath.Join(rgPath, "timestamp.db")
+			deletePath := filepath.Join(rgPath, "delete.db")
+
+			tsIter, err := disk.NewIterator(e.pageManager, tsPath, disk.Timestamp)
+			if err != nil {
+				return err
+			}
+			skipped, err := tsIter.Skip(minTimestamp, maxTimestamp)
+			if err != nil {
+				return err
+			}
+
+			deleteIter, err := disk.NewIterator(e.pageManager, deletePath, disk.Delete)
+			if err != nil {
+				return err
+			}
+			err = deleteIter.Advance(skipped)
+			if err != nil {
+				return err
+			}
+
+			for {
+				en, err := tsIter.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return err
+				}
+				tsEntry := en.(*entry.TimestampEntry)
+				if tsEntry.GetValue() > maxTimestamp {
+					break
+				}
+				if !deleteIter.HasNext() {
+					err = e.pageManager.WritePage(deleteIter.ActivePage, deletePath, int64(deleteIter.CurrentPageOffset))
+					if err != nil {
+						return err
+					}
+				}
+				en, err = deleteIter.Next()
+				if err != nil {
+					return err
+				}
+				deleteEntry := en.(*entry.DeleteEntry)
+				deleteEntry.Delete()
+			}
+			err = e.pageManager.WritePage(deleteIter.ActivePage, deletePath, int64(deleteIter.CurrentPageOffset-e.configuration.PageConfig.PageSize))
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -273,11 +389,11 @@ func (e *Engine) Aggregate(
 ) error {
 	switch function {
 	case MIN:
-		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, 0)
+		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, MIN)
 		if !found {
 			curBest = math.MaxFloat64
 		}
-		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 0)
+		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, MIN)
 		if err != nil {
 			return err
 		}
@@ -288,11 +404,11 @@ func (e *Engine) Aggregate(
 			fmt.Printf("\nMinimum value is %.2f\n\n", curBest)
 		}
 	case MAX:
-		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, 1)
+		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, MAX)
 		if !found {
 			curBest = -math.MaxFloat64
 		}
-		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 1)
+		diskBest, _, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, MAX)
 		if err != nil {
 			return err
 		}
@@ -303,14 +419,14 @@ func (e *Engine) Aggregate(
 			fmt.Printf("\nMaximum value is %.2f\n\n", curBest)
 		}
 	case AVG:
-		memorySum, memoryEntriesNum, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, 2)
+		memorySum, memoryEntriesNum, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, AVG)
 		if !found {
 			memorySum = 0
 			memoryEntriesNum = 0
 		}
 		var totalCount uint64
 		var result float64
-		diskSum, diskEntriesNum, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, 2)
+		diskSum, diskEntriesNum, err := disk.Aggregate(ts, minTimestamp, maxTimestamp, e.pageManager, e.configuration.WindowsDirPath, AVG)
 		if err != nil {
 			return err
 		}
@@ -457,6 +573,7 @@ func (e *Engine) Run() {
 
 			err := e.Put(
 				internal.NewTimeSeries(measurementName, tags),
+				//internal.NewTimeSeries("temp", nil),
 				internal.NewPoint(value),
 			)
 
@@ -472,6 +589,7 @@ func (e *Engine) Run() {
 
 			err := e.DeleteRange(
 				internal.NewTimeSeries(measurementName, tags),
+				//internal.NewTimeSeries("temp", nil),
 				minTimestamp, maxTimestamp,
 			)
 			if err != nil {
@@ -486,6 +604,7 @@ func (e *Engine) Run() {
 
 			err := e.List(
 				internal.NewTimeSeries(measurementName, tags),
+				//internal.NewTimeSeries("temp", nil),
 				minTimestamp, maxTimestamp,
 			)
 			if err != nil {
@@ -503,6 +622,7 @@ func (e *Engine) Run() {
 
 			err := e.Aggregate(
 				internal.NewTimeSeries(measurementName, tags),
+				//internal.NewTimeSeries("temp", nil),
 				minTimestamp, maxTimestamp,
 				aggregationFunction,
 			)

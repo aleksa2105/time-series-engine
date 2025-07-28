@@ -73,7 +73,7 @@ func (mt *MemTable) List(timeSeries *internal.TimeSeries, minTimestamp, maxTimes
 func (mt *MemTable) Aggregate(
 	ts *internal.TimeSeries,
 	minTimestamp, maxTimestamp uint64,
-	function int,
+	function string,
 ) (float64, uint64, bool) {
 	storage, exists := mt.Data[ts.Hash]
 	var sum float64
@@ -86,11 +86,11 @@ func (mt *MemTable) Aggregate(
 	}
 
 	switch function {
-	case 0:
+	case "Min":
 		return points[0].Value, 0, true
-	case 1:
+	case "Max":
 		return points[len(points)-1].Value, 0, true
-	case 2:
+	case "Average":
 		for _, point := range points {
 			sum += point.Value
 		}

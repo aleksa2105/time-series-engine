@@ -134,3 +134,7 @@ func (it *Iterator) Advance(count uint64) error {
 
 	return nil
 }
+
+func (it *Iterator) HasNext() bool {
+	return it.CurrentEntryIndex != it.ActivePage.EntryCount()
+}

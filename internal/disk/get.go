@@ -217,16 +217,18 @@ func GetInRowGroup(
 	return result, nil
 }
 
-func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64, pm *page_manager.Manager, windowsDir string, function int) (float64, uint64, error) {
+func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64, pm *page_manager.Manager, windowsDir string, function string) (float64, uint64, error) {
 	var result float64
 	var sumValue float64
 	var pointsNumber uint64
 
 	switch function {
-	case 0:
+	case "Min":
 		result = math.MaxFloat64
-	case 1, 2:
+	case "Max":
 		result = -math.MaxFloat64
+	case "Average":
+		result = 0
 	}
 
 	windows, err := os.ReadDir(windowsDir)
@@ -273,24 +275,24 @@ func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64
 			sum := insertionSort(items)
 
 			switch function {
-			case 0:
+			case "Min":
 				first := items[0].Value
 				if first < result {
 					result = first
 				}
-			case 1:
+			case "Max":
 				last := items[len(items)-1].Value
 				if last > result {
 					result = last
 				}
-			case 2:
+			case "Average":
 				pointsNumber += uint64(len(items))
 				sumValue += sum
 			}
 		}
 	}
 
-	if function == 2 {
+	if function == "Average" {
 		if pointsNumber == 0 {
 			return 0, 0, nil
 		}
