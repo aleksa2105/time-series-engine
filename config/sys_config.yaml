@@ -8,7 +8,7 @@ parquet:
     max_size: 1000
     row_group_size: 3
 time_window:
-    duration: 1000
+    duration: 30
     start: 0
     windows_dir_path: ./internal/disk/data
 wal:

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"time"
 	"time-series-engine/config"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/parquet"
@@ -39,20 +40,29 @@ func NewTimeWindow(startTimestamp uint64, windowsDir string,
 }
 
 func (tw *TimeWindow) Update() error {
-	tw.StartTimestamp += tw.Config.Duration
-	tw.EndTimestamp = tw.StartTimestamp + tw.Config.Duration
+	now := uint64(time.Now().Unix())
+	if tw.EndTimestamp < now {
+		tw.StartTimestamp = now
+		tw.EndTimestamp = tw.StartTimestamp + tw.Config.Duration
+		if tw.ParquetManager.ActiveParquet != nil {
+			err := tw.ParquetManager.Close()
+			if err != nil {
+				return err
+			}
+		}
 
-	err := tw.ParquetManager.Close()
-	if err != nil {
-		return err
+		err := tw.createNewWindowDirectory()
+		if err != nil {
+			return err
+		}
+
+		tw.ParquetManager.Update(tw.Path)
+		err = tw.Config.SetTimeWindowStart(tw.StartTimestamp)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Made new tw ", tw.StartTimestamp)
 	}
-
-	err = tw.createNewWindowDirectory()
-	if err != nil {
-		return err
-	}
-
-	tw.ParquetManager.Update(tw.Path)
 	return nil
 }
 

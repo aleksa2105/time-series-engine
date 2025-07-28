@@ -45,6 +45,7 @@ type Engine struct {
 	memoryTable    *memory.MemTable
 	wal            *write_ahead_log.WriteAheadLog
 	timeWindow     *time_window.TimeWindow
+	allTimeWindows []string // file paths to all time windows
 }
 
 func NewEngine() (*Engine, error) {
@@ -63,7 +64,12 @@ func NewEngine() (*Engine, error) {
 		parquetManager: parquetManager,
 	}
 
-	e.timeWindow, err = e.checkTimeWindow()
+	err = e.loadTimeWindow()
+	if err != nil {
+		return nil, err
+	}
+
+	err = e.loadAllTimeWindowPaths()
 	if err != nil {
 		return nil, err
 	}
@@ -86,26 +92,44 @@ func NewEngine() (*Engine, error) {
 	return &e, nil
 }
 
-func (e *Engine) checkTimeWindow() (*time_window.TimeWindow, error) {
+func (e *Engine) loadAllTimeWindowPaths() error {
+	path := e.configuration.TimeWindowConfig.WindowsDirPath
+	files, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		if f.IsDir() {
+			e.allTimeWindows = append(e.allTimeWindows, filepath.Join(path, f.Name()))
+		}
+	}
+	return nil
+}
+
+// loadTimeWindow loads already existing time window, or creates new one instead
+func (e *Engine) loadTimeWindow() error {
 	now := uint64(time.Now().Unix())
 	tw, err := time_window.LoadExistingTimeWindow(now, e.configuration.TimeWindowConfig.WindowsDirPath, &e.configuration.TimeWindowConfig, e.parquetManager)
-	if err == nil {
-		return tw, nil
+
+	if tw != nil && err == nil {
+		e.timeWindow = tw
+		return nil
 	}
 
 	// if there is no appropriate window
 	tw, err = time_window.NewTimeWindow(now, e.configuration.TimeWindowConfig.WindowsDirPath, e.parquetManager, &e.configuration.TimeWindowConfig)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	e.timeWindow = tw
 	e.parquetManager.Update(tw.Path)
 
-	err = e.configuration.SetTimeWindowStart(now)
+	err = e.configuration.TimeWindowConfig.SetTimeWindowStart(now)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return tw, nil
+	return nil
 }
 
 func (e *Engine) loadMemtable() error {
@@ -216,6 +240,10 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 }
 
 func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
+	err := e.timeWindow.Update()
+	if err != nil {
+		return err
+	}
 	walSeg := e.wal.ActiveSegment()
 	offset, err := e.wal.Put(ts, p)
 	if err != nil {
@@ -223,6 +251,9 @@ func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 	}
 
 	deleteSegment, err := e.putInMemtable(ts, p, walSeg, offset)
+	if err != nil {
+		return err
+	}
 
 	_, err = e.wal.DeleteWalSegments(deleteSegment)
 	if err != nil {
@@ -339,7 +370,7 @@ func (e *Engine) DeleteInRowGroup(parquetPath string, minTimestamp uint64, maxTi
 					break
 				}
 				if !deleteIter.HasNext() {
-					err = e.pageManager.WritePage(deleteIter.ActivePage, deletePath, int64(deleteIter.CurrentPageOffset))
+					err = e.pageManager.WritePage(deleteIter.ActivePage, deletePath, int64(deleteIter.CurrentPageOffset-e.configuration.PageConfig.PageSize))
 					if err != nil {
 						return err
 					}
@@ -446,22 +477,22 @@ func (e *Engine) Aggregate(
 
 func (e *Engine) Run() {
 	// Helper functions for getting user input:
-	getUserString := func(message string) string {
-		for {
-			fmt.Printf("%s ", message)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				fmt.Printf("\n[ERROR]: %v\n\n", err)
-				continue
-			}
-			input = strings.TrimSpace(input)
-			if input == "" {
-				fmt.Printf("\nEnter something!\n\n")
-				continue
-			}
-			return input
-		}
-	}
+	//getUserString := func(message string) string {
+	//	for {
+	//		fmt.Printf("%s ", message)
+	//		input, err := reader.ReadString('\n')
+	//		if err != nil {
+	//			fmt.Printf("\n[ERROR]: %v\n\n", err)
+	//			continue
+	//		}
+	//		input = strings.TrimSpace(input)
+	//		if input == "" {
+	//			fmt.Printf("\nEnter something!\n\n")
+	//			continue
+	//		}
+	//		return input
+	//	}
+	//}
 	getUserInteger := func(message string) uint64 {
 		for {
 			fmt.Printf("%s ", message)
@@ -504,24 +535,24 @@ func (e *Engine) Run() {
 			return parsedFloat
 		}
 	}
-	getUserTags := func() internal.Tags {
-		var numberOfTags uint64
-		for {
-			numberOfTags = getUserInteger("Enter number of tags in time series:")
-			if numberOfTags != 0 {
-				break
-			}
-			fmt.Printf("\nEnter a postive integer!\n\n")
-		}
-		tags := make(internal.Tags, 0)
-		for i := 0; i < int(numberOfTags); i++ {
-			name := getUserString("Enter tag name:")
-			value := getUserString("Enter tag value:")
-			tags = append(tags, internal.NewTag(name, value))
-		}
-		tags.Sort()
-		return tags
-	}
+	//getUserTags := func() internal.Tags {
+	//	var numberOfTags uint64
+	//	for {
+	//		numberOfTags = getUserInteger("Enter number of tags in time series:")
+	//		if numberOfTags != 0 {
+	//			break
+	//		}
+	//		fmt.Printf("\nEnter a postive integer!\n\n")
+	//	}
+	//	tags := make(internal.Tags, 0)
+	//	for i := 0; i < int(numberOfTags); i++ {
+	//		name := getUserString("Enter tag name:")
+	//		value := getUserString("Enter tag value:")
+	//		tags = append(tags, internal.NewTag(name, value))
+	//	}
+	//	tags.Sort()
+	//	return tags
+	//}
 	getUserMinMaxTimestamp := func() (uint64, uint64) {
 		minTimestamp := getUserInteger("Enter minimum timestamp:")
 		for {
@@ -566,14 +597,14 @@ func (e *Engine) Run() {
 
 		case 1:
 			// Write Point functionality:
-			measurementName := getUserString("Enter time series measurement name")
-			tags := getUserTags()
-			//timestamp := getUserInteger("Enter point timestamp")
+			//measurementName := getUserString("Enter time series measurement name")
+			//tags := getUserTags()
+			////timestamp := getUserInteger("Enter point timestamp")
 			value := getUserFloat("Enter point value: ")
 
 			err := e.Put(
-				internal.NewTimeSeries(measurementName, tags),
-				//internal.NewTimeSeries("temp", nil),
+				//internal.NewTimeSeries(measurementName, tags),
+				internal.NewTimeSeries("temp", nil),
 				internal.NewPoint(value),
 			)
 
@@ -583,13 +614,13 @@ func (e *Engine) Run() {
 
 		case 2:
 			// Delete Range functionality:
-			measurementName := getUserString("Enter time series measurement name: ")
-			tags := getUserTags()
+			//measurementName := getUserString("Enter time series measurement name: ")
+			//tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
 			err := e.DeleteRange(
-				internal.NewTimeSeries(measurementName, tags),
-				//internal.NewTimeSeries("temp", nil),
+				//internal.NewTimeSeries(measurementName, tags),
+				internal.NewTimeSeries("temp", nil),
 				minTimestamp, maxTimestamp,
 			)
 			if err != nil {
@@ -598,13 +629,13 @@ func (e *Engine) Run() {
 
 		case 3:
 			// List functionality:
-			measurementName := getUserString("Enter time series measurement name: ")
-			tags := getUserTags()
+			//measurementName := getUserString("Enter time series measurement name: ")
+			//tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
 			err := e.List(
-				internal.NewTimeSeries(measurementName, tags),
-				//internal.NewTimeSeries("temp", nil),
+				//internal.NewTimeSeries(measurementName, tags),
+				internal.NewTimeSeries("temp", nil),
 				minTimestamp, maxTimestamp,
 			)
 			if err != nil {
@@ -613,16 +644,16 @@ func (e *Engine) Run() {
 
 		case 4:
 			// Aggregate functionality:
-			measurementName := getUserString("Enter time series measurement name: ")
-			tags := getUserTags()
+			//measurementName := getUserString("Enter time series measurement name: ")
+			//tags := getUserTags()
 			minTimestamp, maxTimestamp := getUserMinMaxTimestamp()
 
 			// Getting aggregation function:
 			aggregationFunction := getUserAggregationFunc()
 
 			err := e.Aggregate(
-				internal.NewTimeSeries(measurementName, tags),
-				//internal.NewTimeSeries("temp", nil),
+				//internal.NewTimeSeries(measurementName, tags),
+				internal.NewTimeSeries("temp", nil),
 				minTimestamp, maxTimestamp,
 				aggregationFunction,
 			)

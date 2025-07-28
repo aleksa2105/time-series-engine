@@ -110,8 +110,8 @@ func (c *Config) SetUnstagedOffset(offset uint64) error {
 	return nil
 }
 
-func (c *Config) SetTimeWindowStart(start uint64) error {
-	c.TimeWindowConfig.Start = start
+func (c *TimeWindowConfig) SetTimeWindowStart(start uint64) error {
+	c.Start = start
 
 	updatedFile, err := yaml.Marshal(c)
 	if err != nil {
