@@ -46,6 +46,7 @@ type Engine struct {
 	wal            *write_ahead_log.WriteAheadLog
 	timeWindow     *time_window.TimeWindow
 	allTimeWindows []string // file paths to all time windows
+	recovering     bool
 }
 
 func NewEngine() (*Engine, error) {
@@ -62,6 +63,7 @@ func NewEngine() (*Engine, error) {
 		memoryTable:    memTable,
 		wal:            wal,
 		parquetManager: parquetManager,
+		recovering:     true,
 	}
 
 	err = e.loadTimeWindow()
@@ -89,6 +91,7 @@ func NewEngine() (*Engine, error) {
 		return nil, err
 	}
 
+	e.recovering = false
 	return &e, nil
 }
 
@@ -219,8 +222,17 @@ func (e *Engine) reconstructWalSegment(
 
 func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSegment string, walOffset uint64) (string, error) {
 	var deleteSegment string
-
-	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p)
+	if !e.recovering {
+		err := e.timeWindow.Update(p.Timestamp)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		if p.Timestamp < e.timeWindow.StartTimestamp || p.Timestamp >= e.timeWindow.EndTimestamp {
+			return "", nil
+		}
+	}
+	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p, e.timeWindow.StartTimestamp, e.timeWindow.EndTimestamp)
 	if flushedPoints != nil {
 		deleteSegment = e.memoryTable.StartWALSegment
 		e.memoryTable.StartWALSegment = walSegment
@@ -240,10 +252,6 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 }
 
 func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
-	err := e.timeWindow.Update()
-	if err != nil {
-		return err
-	}
 	walSeg := e.wal.ActiveSegment()
 	offset, err := e.wal.Put(ts, p)
 	if err != nil {
@@ -306,7 +314,7 @@ func (e *Engine) DeleteInParquet(ts *internal.TimeSeries, minTimestamp uint64, m
 			}
 			continue
 		}
-		break
+		continue
 	}
 	return nil
 }

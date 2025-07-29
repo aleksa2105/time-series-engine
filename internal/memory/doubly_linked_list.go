@@ -126,13 +126,15 @@ func (dll *DoublyLinkedList) GetPointsInInterval(minTimestamp, maxTimestamp uint
 	return points
 }
 
-func (dll *DoublyLinkedList) GetSortedPoints() []*internal.Point {
+func (dll *DoublyLinkedList) GetSortedPoints(minTimestamp uint64, maxTimestamp uint64) []*internal.Point {
 	points := make([]*internal.Point, 0, dll.Size)
 
 	// Traversing the list:
 	curNode := dll.Header.Next
 	for curNode != dll.Trailer {
-		points = append(points, curNode.Point)
+		if curNode.Point.Timestamp >= minTimestamp && curNode.Point.Timestamp <= maxTimestamp {
+			points = append(points, curNode.Point)
+		}
 		curNode = curNode.Next
 	}
 
