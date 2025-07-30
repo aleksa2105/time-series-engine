@@ -232,7 +232,7 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 			return "", nil
 		}
 	}
-	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p, e.timeWindow.StartTimestamp, e.timeWindow.EndTimestamp)
+	flushedPoints := e.memoryTable.WritePointWithFlush(ts, p)
 	if flushedPoints != nil {
 		deleteSegment = e.memoryTable.StartWALSegment
 		e.memoryTable.StartWALSegment = walSegment
@@ -243,12 +243,83 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 			return "", err
 		}
 
-		err = e.timeWindow.FlushAll(flushedPoints)
+		groups, err := e.prepareFlush(flushedPoints)
+		if err != nil {
+			return "", err
+		}
+
+		err = e.flush(groups)
 		if err != nil {
 			return "", err
 		}
 	}
 	return deleteSegment, nil
+}
+
+func (e *Engine) prepareFlush(flushedPoints map[string][]*internal.Point) (map[string]map[string][]*internal.Point, error) {
+	windowGroups := make(map[string]map[string][]*internal.Point)
+
+	for tsName, points := range flushedPoints {
+		currentTw := e.timeWindow
+		for _, point := range points {
+			if !e.timeWindow.Belongs(point.Timestamp) {
+				if !currentTw.Belongs(point.Timestamp) {
+					tw, err := time_window.LoadExistingTimeWindow(point.Timestamp, e.configuration.WindowsDirPath, &e.configuration.TimeWindowConfig, e.parquetManager)
+					if err != nil {
+						return nil, err
+					}
+					currentTw = tw
+				}
+
+				windowID := currentTw.Path
+				if _, ok := windowGroups[windowID]; !ok {
+					windowGroups[windowID] = make(map[string][]*internal.Point)
+				}
+				windowGroups[windowID][tsName] = append(windowGroups[windowID][tsName], point)
+			} else {
+				if _, ok := windowGroups[e.timeWindow.Path]; !ok {
+					windowGroups[e.timeWindow.Path] = make(map[string][]*internal.Point)
+				}
+				windowGroups[e.timeWindow.Path][tsName] = append(windowGroups[e.timeWindow.Path][tsName], point)
+			}
+		}
+	}
+	return windowGroups, nil
+}
+
+func (e *Engine) flush(windowGroups map[string]map[string][]*internal.Point) error {
+	currentTw := e.timeWindow
+	var err error
+	for winID, group := range windowGroups {
+		if winID != currentTw.Path {
+			var examplePoint *internal.Point
+			found := false
+			for _, points := range group {
+				if len(points) > 0 {
+					examplePoint = points[0]
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+			currentTw, err = time_window.LoadExistingTimeWindow(examplePoint.Timestamp, e.configuration.WindowsDirPath, &e.configuration.TimeWindowConfig, e.parquetManager)
+			if err != nil {
+				return err
+			}
+			err = currentTw.FlushAll(group)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = currentTw.FlushAll(group)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {

@@ -21,7 +21,7 @@ func NewMemTable(maxSize uint64) *MemTable {
 	}
 }
 
-func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *internal.Point, minTimestamp uint64, maxTimestamp uint64) map[string][]*internal.Point {
+func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *internal.Point) map[string][]*internal.Point {
 	storage, exists := mt.Data[timeSeries.Hash]
 	if !exists {
 		mt.Data[timeSeries.Hash] = NewDoublyLinkedList()
@@ -32,7 +32,7 @@ func (mt *MemTable) WritePointWithFlush(timeSeries *internal.TimeSeries, point *
 	mt.Count += 1
 
 	if mt.IsFull() {
-		return mt.FlushAllTimeSeries(minTimestamp, maxTimestamp)
+		return mt.FlushAllTimeSeries()
 	}
 	return nil
 }
@@ -41,11 +41,11 @@ func (mt *MemTable) IsFull() bool {
 	return mt.Count == mt.MaxSize
 }
 
-func (mt *MemTable) FlushAllTimeSeries(minTimestamp uint64, maxTimestamp uint64) map[string][]*internal.Point {
+func (mt *MemTable) FlushAllTimeSeries() map[string][]*internal.Point {
 	allTimeSeries := make(map[string][]*internal.Point)
 
 	for tsHash, storage := range mt.Data {
-		allTimeSeries[tsHash] = storage.GetSortedPoints(minTimestamp, maxTimestamp)
+		allTimeSeries[tsHash] = storage.GetSortedPoints()
 	}
 	mt.Count = 0
 	mt.Data = make(map[string]*DoublyLinkedList)
@@ -105,7 +105,7 @@ func (mt *MemTable) GetSortedPoints(timeSeries *internal.TimeSeries) ([]*interna
 	if !exists {
 		return nil, fmt.Errorf("there are no stored points of that time series")
 	}
-	return storage.GetSortedPoints(0, 0), nil
+	return storage.GetSortedPoints(), nil
 }
 
 func (mt *MemTable) MinTimestamp(timeSeries *internal.TimeSeries) (uint64, error) {

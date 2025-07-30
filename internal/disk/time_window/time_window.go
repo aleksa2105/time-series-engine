@@ -59,9 +59,15 @@ func (tw *TimeWindow) Update(timestamp uint64) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Made new tw ", tw.StartTimestamp)
 	}
 	return nil
+}
+
+func (tw *TimeWindow) Belongs(timestamp uint64) bool {
+	if tw.StartTimestamp <= timestamp && timestamp <= tw.EndTimestamp {
+		return true
+	}
+	return false
 }
 
 func (tw *TimeWindow) createNewWindowDirectory() error {
