@@ -39,14 +39,14 @@ func GetAllAggregationFunctions() []string {
 var reader = bufio.NewReader(os.Stdin)
 
 type Engine struct {
-	configuration  *config.Config
-	pageManager    *page_manager.Manager
-	parquetManager *parquet.Manager
-	memoryTable    *memory.MemTable
-	wal            *write_ahead_log.WriteAheadLog
-	timeWindow     *time_window.TimeWindow
-	allTimeWindows []string // file paths to all time windows
-	recovering     bool
+	configuration   *config.Config
+	pageManager     *page_manager.Manager
+	parquetManager  *parquet.Manager
+	memoryTable     *memory.MemTable
+	wal             *write_ahead_log.WriteAheadLog
+	timeWindow      *time_window.TimeWindow
+	recovering      bool
+	retentionPeriod int64
 }
 
 func NewEngine() (*Engine, error) {
@@ -70,8 +70,18 @@ func NewEngine() (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	err = e.loadAllTimeWindowPaths()
+	switch e.configuration.PeriodType {
+	case "minute":
+		e.retentionPeriod = 60 * e.configuration.RetentionPeriod
+		break
+	case "hour":
+		e.retentionPeriod = 60 * 60 * e.configuration.RetentionPeriod
+		break
+	case "day":
+		e.retentionPeriod = 60 * 60 * 24 * e.configuration.RetentionPeriod
+		break
+	}
+	err = e.checkRetentionPeriod()
 	if err != nil {
 		return nil, err
 	}
@@ -95,15 +105,25 @@ func NewEngine() (*Engine, error) {
 	return &e, nil
 }
 
-func (e *Engine) loadAllTimeWindowPaths() error {
+func (e *Engine) checkRetentionPeriod() error {
 	path := e.configuration.TimeWindowConfig.WindowsDirPath
 	files, err := os.ReadDir(path)
+	retention := time.Now().Unix() - e.retentionPeriod
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
 		if f.IsDir() {
-			e.allTimeWindows = append(e.allTimeWindows, filepath.Join(path, f.Name()))
+			_, maxTimestamp, err := disk.MinMaxTimestamp(f.Name())
+			if err != nil {
+				return err
+			}
+			if maxTimestamp <= uint64(retention) {
+				err = e.pageManager.RemoveFile(filepath.Join(path, f.Name()))
+				if err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -661,6 +681,11 @@ func (e *Engine) Run() {
 
 	// Main loop:
 	for {
+		err := e.checkRetentionPeriod()
+		if err != nil {
+			fmt.Printf("\n[ERROR]: %v\n\n", err)
+		}
+
 		fmt.Println()
 		fmt.Println(" 1 - Write Point")
 		fmt.Println(" 2 - Delete Range")

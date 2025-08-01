@@ -6,6 +6,11 @@ import (
 	"os"
 )
 
+type EngineConfig struct {
+	RetentionPeriod int64  `yaml:"retention_period"`
+	PeriodType      string `yaml:"period_type"`
+}
+
 type MemTableConfig struct {
 	MaxSize uint64 `yaml:"max_size"`
 }
@@ -34,6 +39,7 @@ type TimeWindowConfig struct {
 }
 
 type Config struct {
+	EngineConfig     `yaml:"engine"`
 	MemTableConfig   `yaml:"memtable"`
 	PageConfig       `yaml:"page"`
 	ParquetConfig    `yaml:"parquet"`

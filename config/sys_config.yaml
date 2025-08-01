@@ -1,3 +1,6 @@
+engine:
+    retention_period: 1
+    period_type: minute
 memtable:
     max_size: 4
 page:
