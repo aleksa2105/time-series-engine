@@ -2,6 +2,7 @@ package buffer_pool
 
 import (
 	"fmt"
+	"strings"
 )
 
 type PageKey struct {
@@ -55,6 +56,16 @@ func (bp *BufferPool) Put(p []byte, filename string, offset int64) {
 
 func (bp *BufferPool) IsFull() bool {
 	return bp.doublyList.PageCount == bp.capacity
+}
+
+func (bp *BufferPool) Remove(filename string) error {
+	for key, node := range bp.hashMap {
+		if strings.HasPrefix(key.Filename, filename) {
+			bp.doublyList.DeleteNode(node)
+			delete(bp.hashMap, key)
+		}
+	}
+	return nil
 }
 
 type DLL struct {
@@ -112,6 +123,37 @@ func (dll *DLL) MoveToFront(node *DLLNode) {
 	node.next = nil
 	dll.tail.next = node
 	dll.tail = node
+}
+
+func (dll *DLL) DeleteNode(node *DLLNode) {
+	if node == nil {
+		return
+	}
+
+	if node == dll.head {
+		dll.head = node.next
+		if dll.head != nil {
+			dll.head.prev = nil
+		}
+	} else if node == dll.tail {
+		dll.tail = node.prev
+		if dll.tail != nil {
+			dll.tail.next = nil
+		}
+	} else {
+		if node.prev != nil {
+			node.prev.next = node.next
+		}
+		if node.next != nil {
+			node.next.prev = node.prev
+		}
+	}
+
+	dll.PageCount--
+	if dll.PageCount == 0 {
+		dll.head = nil
+		dll.tail = nil
+	}
 }
 
 type DLLNode struct {

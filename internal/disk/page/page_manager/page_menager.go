@@ -25,6 +25,7 @@ func (m *Manager) WritePage(p page.Page, path string, offset int64) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -45,11 +46,6 @@ func (m *Manager) WritePage(p page.Page, path string, offset int64) error {
 	if found != nil {
 		m.bufferPool.Put(bytes, path, offset)
 	}
-	file.Sync()
-	err = file.Close()
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -63,6 +59,7 @@ func (m *Manager) ReadPage(path string, offset int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -71,11 +68,6 @@ func (m *Manager) ReadPage(path string, offset int64) ([]byte, error) {
 
 	bytes := make([]byte, m.Config.PageSize)
 	_, err = file.Read(bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	err = file.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +82,7 @@ func (m *Manager) WriteStructure(data []byte, path string, offset int64) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -108,13 +101,6 @@ func (m *Manager) WriteStructure(data []byte, path string, offset int64) error {
 		return err
 	}
 
-	file.Sync()
-
-	err = file.Close()
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -123,6 +109,7 @@ func (m *Manager) ReadStructure(path string, offset int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -142,11 +129,6 @@ func (m *Manager) ReadStructure(path string, offset int64) ([]byte, error) {
 		return nil, err
 	}
 
-	err = file.Close()
-	if err != nil {
-		return nil, err
-	}
-
 	return bytes, nil
 }
 
@@ -155,6 +137,7 @@ func (m *Manager) ReadBytes(path string, offset int64, length int64) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -167,11 +150,6 @@ func (m *Manager) ReadBytes(path string, offset int64, length int64) ([]byte, er
 		return nil, err
 	}
 
-	err = file.Close()
-	if err != nil {
-		return nil, err
-	}
-
 	return bytes, nil
 }
 
@@ -180,6 +158,7 @@ func (m *Manager) WriteBytes(path string, offset int64, bytes []byte) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
@@ -187,13 +166,6 @@ func (m *Manager) WriteBytes(path string, offset int64, bytes []byte) error {
 	}
 
 	_, err = file.Write(bytes)
-	if err != nil {
-		return err
-	}
-
-	file.Sync()
-
-	err = file.Close()
 	if err != nil {
 		return err
 	}
@@ -207,19 +179,20 @@ func (m *Manager) CreateFile(filename string) error {
 		return err
 	}
 
-	err = file.Close()
-	if err != nil {
-		return err
-	}
+	defer file.Close()
 
 	return nil
 }
 
 func (m *Manager) RemoveFile(filename string) error {
-	err := os.RemoveAll(filename)
+	err := m.bufferPool.Remove(filename)
 	if err != nil {
 		return err
 	}
 
+	err = os.RemoveAll(filename)
+	if err != nil {
+		return err
+	}
 	return nil
 }

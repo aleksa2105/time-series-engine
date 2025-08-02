@@ -343,6 +343,11 @@ func (e *Engine) flush(windowGroups map[string]map[string][]*internal.Point) err
 }
 
 func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
+	err := e.checkRetentionPeriod()
+	if err != nil {
+		fmt.Printf("\n[ERROR]: %v\n\n", err)
+	}
+
 	walSeg := e.wal.ActiveSegment()
 	offset, err := e.wal.Put(ts, p)
 	if err != nil {
@@ -363,7 +368,12 @@ func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 }
 
 func (e *Engine) DeleteRange(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
-	err := e.wal.Delete(ts, minTimestamp, maxTimestamp)
+	err := e.checkRetentionPeriod()
+	if err != nil {
+		fmt.Printf("\n[ERROR]: %v\n\n", err)
+	}
+
+	err = e.wal.Delete(ts, minTimestamp, maxTimestamp)
 	if err != nil {
 		return err
 	}
@@ -491,8 +501,17 @@ func (e *Engine) DeleteInRowGroup(parquetPath string, minTimestamp uint64, maxTi
 }
 
 func (e *Engine) List(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
+	err := e.checkRetentionPeriod()
+	if err != nil {
+		fmt.Printf("\n[ERROR]: %v\n\n", err)
+	}
+
 	pointsMemory := e.memoryTable.List(ts, minTimestamp, maxTimestamp)
 
+	err = e.checkRetentionPeriod()
+	if err != nil {
+		fmt.Printf("\n[ERROR]: %v\n\n", err)
+	}
 	pointsDisk, err := disk.Get(
 		e.pageManager,
 		e.configuration.TimeWindowConfig.WindowsDirPath,
@@ -517,6 +536,10 @@ func (e *Engine) Aggregate(
 	minTimestamp, maxTimestamp uint64,
 	function string,
 ) error {
+	err := e.checkRetentionPeriod()
+	if err != nil {
+		fmt.Printf("\n[ERROR]: %v\n\n", err)
+	}
 	switch function {
 	case MIN:
 		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, MIN)
@@ -681,11 +704,6 @@ func (e *Engine) Run() {
 
 	// Main loop:
 	for {
-		err := e.checkRetentionPeriod()
-		if err != nil {
-			fmt.Printf("\n[ERROR]: %v\n\n", err)
-		}
-
 		fmt.Println()
 		fmt.Println(" 1 - Write Point")
 		fmt.Println(" 2 - Delete Range")
