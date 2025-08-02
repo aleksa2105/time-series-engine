@@ -114,7 +114,7 @@ func (e *Engine) checkRetentionPeriod() error {
 	}
 	for _, f := range files {
 		if f.IsDir() {
-			_, maxTimestamp, err := disk.MinMaxTimestamp(f.Name())
+			minTimestamp, maxTimestamp, err := disk.MinMaxTimestamp(f.Name())
 			if err != nil {
 				return err
 			}
@@ -123,6 +123,7 @@ func (e *Engine) checkRetentionPeriod() error {
 				if err != nil {
 					return err
 				}
+				e.memoryTable.DeleteExpired(minTimestamp, maxTimestamp)
 			}
 		}
 	}

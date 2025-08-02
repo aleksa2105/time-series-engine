@@ -61,6 +61,12 @@ func (mt *MemTable) DeleteRange(timeSeries *internal.TimeSeries, minTimestamp, m
 	mt.Count -= storage.DeleteRange(minTimestamp, maxTimestamp)
 }
 
+func (mt *MemTable) DeleteExpired(minTimestamp, maxTimestamp uint64) {
+	for _, storage := range mt.Data {
+		storage.DeleteRange(minTimestamp, maxTimestamp)
+	}
+}
+
 func (mt *MemTable) List(timeSeries *internal.TimeSeries, minTimestamp, maxTimestamp uint64) []*internal.Point {
 	timeSeriesKey := timeSeries.Hash
 	storage, exists := mt.Data[timeSeriesKey]
