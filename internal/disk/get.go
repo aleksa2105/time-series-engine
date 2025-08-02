@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/entry"
-	"time-series-engine/internal/disk/page/page_manager"
+	"time-series-engine/internal/disk/page"
 	"time-series-engine/internal/disk/parquet"
 	"time-series-engine/internal/disk/row_group"
 )
 
-func Get(pm *page_manager.Manager, windowsDir string, ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) ([]*internal.Point, error) {
+func Get(pm *page.Manager, windowsDir string, ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64) ([]*internal.Point, error) {
 	windows, err := os.ReadDir(windowsDir)
 	result := make([]*internal.Point, 0)
 	if err != nil {
@@ -69,7 +69,7 @@ func MinMaxTimestamp(name string) (uint64, uint64, error) {
 }
 
 func GetParquet(
-	pm *page_manager.Manager,
+	pm *page.Manager,
 	windowsDir string, windowDir string,
 	ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64,
 ) (string, error) {
@@ -103,7 +103,7 @@ func GetParquet(
 	return "", nil
 }
 
-func GetInParquet(pm *page_manager.Manager, parquetPath string, minTimestamp uint64, maxTimestamp uint64) ([]*internal.Point, error) {
+func GetInParquet(pm *page.Manager, parquetPath string, minTimestamp uint64, maxTimestamp uint64) ([]*internal.Point, error) {
 	rowGroups, err := os.ReadDir(parquetPath)
 	result := make([]*internal.Point, 0)
 	if err != nil {
@@ -145,7 +145,7 @@ func DoIntervalsOverlap(min1, max1, min2, max2 uint64) bool {
 }
 
 func GetInRowGroup(
-	pm *page_manager.Manager, rgPath string,
+	pm *page.Manager, rgPath string,
 	minTimestamp uint64, maxTimestamp uint64,
 ) ([]*internal.Point, error) {
 	result := make([]*internal.Point, 0)
@@ -217,7 +217,7 @@ func GetInRowGroup(
 	return result, nil
 }
 
-func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64, pm *page_manager.Manager, windowsDir string, function string) (float64, uint64, error) {
+func Aggregate(ts *internal.TimeSeries, minTimestamp uint64, maxTimestamp uint64, pm *page.Manager, windowsDir string, function string) (float64, uint64, error) {
 	var result float64
 	var sumValue float64
 	var pointsNumber uint64

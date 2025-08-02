@@ -8,14 +8,13 @@ import (
 	"time-series-engine/internal/disk/chunk"
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
-	"time-series-engine/internal/disk/page/page_manager"
 )
 
 func TestTimestampPage(t *testing.T) {
 	const PageSize uint64 = 1024 // 1KB
 
 	c := chunk.NewTimestampChunk(PageSize, "tests/testTimestamp")
-	pm := page_manager.NewManager(config.PageConfig{PageSize: PageSize})
+	pm := page.NewManager(config.PageConfig{PageSize: PageSize})
 
 	numEntries := 20
 	for i := 0; i < numEntries; i++ {

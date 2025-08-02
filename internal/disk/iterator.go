@@ -3,7 +3,6 @@ package disk
 import (
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
-	"time-series-engine/internal/disk/page/page_manager"
 )
 
 const (
@@ -20,10 +19,10 @@ type Iterator struct {
 	CurrentPageOffset uint64
 	Filename          string
 	Type              PageType
-	PageManager       *page_manager.Manager
+	PageManager       *page.Manager
 }
 
-func NewIterator(pm *page_manager.Manager, filename string, pt PageType) (*Iterator, error) {
+func NewIterator(pm *page.Manager, filename string, pt PageType) (*Iterator, error) {
 	it := &Iterator{
 		ActivePage:        nil,
 		CurrentEntryIndex: 0,

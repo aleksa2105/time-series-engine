@@ -3,7 +3,6 @@ package chunk
 import (
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
-	"time-series-engine/internal/disk/page/page_manager"
 )
 
 type ValueChunk struct {
@@ -20,7 +19,7 @@ func NewValueChunk(pageSize uint64, filePath string) *ValueChunk {
 	}
 }
 
-func (vc *ValueChunk) Add(pm *page_manager.Manager, value float64) error {
+func (vc *ValueChunk) Add(pm *page.Manager, value float64) error {
 	cd := vc.ActivePage.ValueCompressor.CompressNext(value, vc.ActivePage.Metadata.Count)
 	ve := entry.NewValueEntry(value, cd)
 
@@ -41,11 +40,11 @@ func (vc *ValueChunk) Add(pm *page_manager.Manager, value float64) error {
 	return nil
 }
 
-func (vc *ValueChunk) Save(pm *page_manager.Manager) error {
+func (vc *ValueChunk) Save(pm *page.Manager) error {
 	return pm.WritePage(vc.ActivePage, vc.FilePath, int64(vc.CurrentOffset))
 }
 
-func (vc *ValueChunk) Load(pm *page_manager.Manager) error {
+func (vc *ValueChunk) Load(pm *page.Manager) error {
 	valuePageBytes, err := pm.ReadPage(vc.FilePath, int64(vc.CurrentOffset))
 	valuePage, err := page.DeserializeValuePage(valuePageBytes)
 	if err != nil {

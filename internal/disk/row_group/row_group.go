@@ -4,11 +4,11 @@ import (
 	"path/filepath"
 	"time-series-engine/internal"
 	"time-series-engine/internal/disk/chunk"
-	"time-series-engine/internal/disk/page/page_manager"
+	"time-series-engine/internal/disk/page"
 )
 
 type RowGroup struct {
-	PageManager    *page_manager.Manager
+	PageManager    *page.Manager
 	Metadata       *Metadata
 	TimestampChunk *chunk.TimestampChunk
 	ValueChunk     *chunk.ValueChunk
@@ -16,7 +16,7 @@ type RowGroup struct {
 	DirectoryPath  string
 }
 
-func NewRowGroup(pm *page_manager.Manager, path string, rgIndex uint64) (*RowGroup, error) {
+func NewRowGroup(pm *page.Manager, path string, rgIndex uint64) (*RowGroup, error) {
 	files := make([]*string, 0, 4) // metadata + timestamp + value + delete
 	filePathMetadata := filepath.Join(path, "metadata.db")
 	filePathTimestamp := filepath.Join(path, "timestamp.db")
@@ -86,7 +86,7 @@ func (rg *RowGroup) Save() error {
 	return nil
 }
 
-func createFiles(pm *page_manager.Manager, files []*string) error {
+func createFiles(pm *page.Manager, files []*string) error {
 	for _, file := range files {
 		err := pm.CreateFile(*file)
 		if err != nil {
@@ -97,7 +97,7 @@ func createFiles(pm *page_manager.Manager, files []*string) error {
 	return nil
 }
 
-func LoadRowGroup(pm *page_manager.Manager, path string) (*RowGroup, error) {
+func LoadRowGroup(pm *page.Manager, path string) (*RowGroup, error) {
 	metaPath := filepath.Join(path, "metadata.db")
 	timestampPath := filepath.Join(path, "timestamp.db")
 	valuePath := filepath.Join(path, "value.db")

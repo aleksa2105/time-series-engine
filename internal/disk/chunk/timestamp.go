@@ -3,7 +3,6 @@ package chunk
 import (
 	"time-series-engine/internal/disk/entry"
 	"time-series-engine/internal/disk/page"
-	"time-series-engine/internal/disk/page/page_manager"
 )
 
 type TimestampChunk struct {
@@ -20,7 +19,7 @@ func NewTimestampChunk(pageSize uint64, filePath string) *TimestampChunk {
 	}
 }
 
-func (tsc *TimestampChunk) Add(pm *page_manager.Manager, timestamp uint64) error {
+func (tsc *TimestampChunk) Add(pm *page.Manager, timestamp uint64) error {
 	cd := tsc.ActivePage.TimestampCompressor.CompressNext(
 		timestamp, tsc.ActivePage.Metadata.Count)
 
@@ -42,11 +41,11 @@ func (tsc *TimestampChunk) Add(pm *page_manager.Manager, timestamp uint64) error
 	return nil
 }
 
-func (tsc *TimestampChunk) Save(pm *page_manager.Manager) error {
+func (tsc *TimestampChunk) Save(pm *page.Manager) error {
 	return pm.WritePage(tsc.ActivePage, tsc.FilePath, int64(tsc.CurrentOffset))
 }
 
-func (tsc *TimestampChunk) Load(pm *page_manager.Manager) error {
+func (tsc *TimestampChunk) Load(pm *page.Manager) error {
 	timestampPageBytes, err := pm.ReadPage(tsc.FilePath, int64(tsc.CurrentOffset))
 	timestampPage, err := page.DeserializeTimestampPage(timestampPageBytes)
 	if err != nil {

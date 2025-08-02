@@ -1,10 +1,9 @@
-package page_manager
+package page
 
 import (
 	"encoding/binary"
 	"os"
 	"time-series-engine/config"
-	"time-series-engine/internal/disk/page"
 	"time-series-engine/internal/memory/buffer_pool"
 )
 
@@ -20,7 +19,7 @@ func NewManager(config config.PageConfig) *Manager {
 	}
 }
 
-func (m *Manager) WritePage(p page.Page, path string, offset int64) error {
+func (m *Manager) WritePage(p Page, path string, offset int64) error {
 	file, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
