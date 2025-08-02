@@ -234,6 +234,26 @@ func (e *Engine) reconstructWalSegment(
 	return nil
 }
 
+func (e *Engine) BelongsInAny(timestamp uint64) (bool, error) {
+	path := e.configuration.TimeWindowConfig.WindowsDirPath
+	files, err := os.ReadDir(path)
+	if err != nil {
+		return false, err
+	}
+	for _, f := range files {
+		if f.IsDir() {
+			minTimestamp, maxTimestamp, err := disk.MinMaxTimestamp(f.Name())
+			if err != nil {
+				return false, err
+			}
+			if minTimestamp < timestamp && maxTimestamp > timestamp {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSegment string, walOffset uint64) (string, error) {
 	var deleteSegment string
 	if !e.recovering {
@@ -242,7 +262,11 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 			return "", err
 		}
 	} else {
-		if p.Timestamp < e.timeWindow.StartTimestamp || p.Timestamp >= e.timeWindow.EndTimestamp {
+		does, err := e.BelongsInAny(p.Timestamp)
+		if err != nil {
+			return "", err
+		}
+		if !does {
 			return "", nil
 		}
 	}
