@@ -103,6 +103,5 @@ func LoadExistingTimeWindow(currentTime uint64, windowsDir string, conf *config.
 			return tw, nil
 		}
 	}
-
-	return nil, fmt.Errorf("no time window matches current time")
+	return NewTimeWindow(currentTime, windowsDir, parquetManager, conf)
 }
