@@ -30,37 +30,12 @@ func NewTimeWindow(startTimestamp uint64, windowsDir string,
 		Config:         c,
 	}
 
-	err := tw.createNewWindowDirectory()
+	err := tw.CreateNewWindowDirectory()
 	if err != nil {
 		return nil, err
 	}
 
 	return tw, nil
-}
-
-func (tw *TimeWindow) Update(timestamp uint64) error {
-	if tw.EndTimestamp < timestamp {
-		tw.StartTimestamp = timestamp
-		tw.EndTimestamp = tw.StartTimestamp + tw.Config.Duration
-		if tw.ParquetManager.ActiveParquet != nil {
-			err := tw.ParquetManager.Close()
-			if err != nil {
-				return err
-			}
-		}
-
-		err := tw.createNewWindowDirectory()
-		if err != nil {
-			return err
-		}
-
-		tw.ParquetManager.Update(tw.Path)
-		err = tw.Config.SetTimeWindowStart(tw.StartTimestamp)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (tw *TimeWindow) Belongs(timestamp uint64) bool {
@@ -70,7 +45,7 @@ func (tw *TimeWindow) Belongs(timestamp uint64) bool {
 	return false
 }
 
-func (tw *TimeWindow) createNewWindowDirectory() error {
+func (tw *TimeWindow) CreateNewWindowDirectory() error {
 	newFolderName := fmt.Sprintf("window_%d-%d", tw.StartTimestamp, tw.EndTimestamp)
 	newPath := filepath.Join(tw.WindowsDir, newFolderName)
 

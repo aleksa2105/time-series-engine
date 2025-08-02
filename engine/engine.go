@@ -147,7 +147,7 @@ func (e *Engine) loadTimeWindow() error {
 	e.timeWindow = tw
 	e.parquetManager.Update(tw.Path)
 
-	err = e.configuration.TimeWindowConfig.SetTimeWindowStart(now)
+	err = e.configuration.SetTimeWindowStart(now)
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (e *Engine) reconstructWalSegment(
 func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSegment string, walOffset uint64) (string, error) {
 	var deleteSegment string
 	if !e.recovering {
-		err := e.timeWindow.Update(p.Timestamp)
+		err := e.UpdateTimeWindow(p.Timestamp)
 		if err != nil {
 			return "", err
 		}
@@ -274,6 +274,32 @@ func (e *Engine) putInMemtable(ts *internal.TimeSeries, p *internal.Point, walSe
 		}
 	}
 	return deleteSegment, nil
+}
+
+func (e *Engine) UpdateTimeWindow(timestamp uint64) error {
+	tw := e.timeWindow
+	if tw.EndTimestamp < timestamp {
+		tw.StartTimestamp = timestamp
+		tw.EndTimestamp = tw.StartTimestamp + tw.Config.Duration
+		if tw.ParquetManager.ActiveParquet != nil {
+			err := tw.ParquetManager.Close()
+			if err != nil {
+				return err
+			}
+		}
+
+		err := tw.CreateNewWindowDirectory()
+		if err != nil {
+			return err
+		}
+
+		tw.ParquetManager.Update(tw.Path)
+		err = e.configuration.SetTimeWindowStart(tw.StartTimestamp)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *Engine) prepareFlush(flushedPoints map[string][]*internal.Point) (map[string]map[string][]*internal.Point, error) {
