@@ -1,0 +1,20 @@
+engine:
+    retention_period: 3
+    period_type: minute
+memtable:
+    max_size: 4
+page:
+    page_size: 1000
+    filename_length: 4
+    buffer_pool_capacity: 100
+parquet:
+    page_size: 1000
+    row_group_size: 3
+time_window:
+    duration: 90
+    start: 0
+    windows_dir_path: ./db/data
+wal:
+    logs_dir_path: ./db/logs
+    unstaged_offset: 0
+    segment_size_in_pages: 2
