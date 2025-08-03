@@ -12,9 +12,9 @@ parquet:
     row_group_size: 3
 time_window:
     duration: 90
-    start: 1754172956
+    start: 0
     windows_dir_path: ./db/data
 wal:
     logs_dir_path: ./db/logs
-    unstaged_offset: 8
+    unstaged_offset: 0
     segment_size_in_pages: 2

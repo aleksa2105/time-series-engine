@@ -381,7 +381,7 @@ func (e *Engine) flush(windowGroups map[string]map[string][]*internal.Point) err
 	return nil
 }
 
-func (e *Engine) put(ts *internal.TimeSeries, p *internal.Point) error {
+func (e *Engine) Put(ts *internal.TimeSeries, p *internal.Point) error {
 	walSeg := e.wal.ActiveSegment()
 	offset, err := e.wal.Put(ts, p)
 	if err != nil {
@@ -529,7 +529,7 @@ func (e *Engine) deleteInRowGroup(parquetPath string, minTimestamp uint64, maxTi
 	return nil
 }
 
-func (e *Engine) list(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
+func (e *Engine) List(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64) error {
 	err := e.checkRetentionPeriod()
 	if err != nil {
 		fmt.Printf("\n[ERROR]: %v\n\n", err)
@@ -545,14 +545,20 @@ func (e *Engine) list(ts *internal.TimeSeries, minTimestamp, maxTimestamp uint64
 		maxTimestamp,
 	)
 
-	fmt.Println()
-	for _, p := range pointsDisk {
-		fmt.Println(p)
+	if len(pointsDisk) > 0 || len(pointsMemory) > 0 {
+		fmt.Println()
+		for _, p := range pointsDisk {
+			fmt.Println(p)
+		}
+		for _, p := range pointsMemory {
+			fmt.Println(p)
+		}
+		fmt.Println()
+	} else {
+		fmt.Println()
+		fmt.Println("No points found")
 	}
-	for _, p := range pointsMemory {
-		fmt.Println(p)
-	}
-	fmt.Println()
+
 	return err
 }
 
@@ -576,6 +582,9 @@ func (e *Engine) aggregate(
 		}
 		if curBest != math.MaxFloat64 {
 			fmt.Printf("\nMinimum value is %.2f\n\n", curBest)
+		} else {
+			fmt.Println()
+			fmt.Printf("No points found\n")
 		}
 	case MAX:
 		curBest, _, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, MAX)
@@ -591,6 +600,9 @@ func (e *Engine) aggregate(
 		}
 		if curBest != -math.MaxFloat64 {
 			fmt.Printf("\nMaximum value is %.2f\n\n", curBest)
+		} else {
+			fmt.Println()
+			fmt.Printf("No points found\n")
 		}
 	case AVG:
 		memorySum, memoryEntriesNum, found := e.memoryTable.Aggregate(ts, minTimestamp, maxTimestamp, AVG)
@@ -657,7 +669,7 @@ func (e *Engine) PutPoint() {
 	////timestamp := getUserInteger("Enter point timestamp")
 	value := readFloat("Enter point value: ")
 
-	err := e.put(
+	err := e.Put(
 		internal.NewTimeSeries(measurementName, tags),
 		//internal.NewTimeSeries("temp", nil),
 		internal.NewPoint(value),
@@ -688,7 +700,7 @@ func (e *Engine) ListRange() {
 	tags := readTags()
 	minTimestamp, maxTimestamp := readMinMaxTimestamp()
 
-	err := e.list(
+	err := e.List(
 		internal.NewTimeSeries(measurementName, tags),
 		//internal.NewTimeSeries("temp", nil),
 		minTimestamp, maxTimestamp,
